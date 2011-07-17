@@ -30,6 +30,11 @@ instance Runtime Standard where
                              else execute Standard [r']
     where f [] = return Nil
           f ((Cons (Label "error") (Cons (Label e) Nil)) : _) = E.throw (RuntimeException e)
+          f ((Cons (Label "print") (Cons (Label m) Nil)) : x) = putStrLn m >> execute Standard x
+          f ((Cons (Label "get-line") Nil) : x) = do l <- getLine
+                                                     if null x
+                                                       then return (Label l)
+                                                       else execute Standard x
           f es = return $ last $ map (evaluate Standard) es
 
 ctl Nil = []
