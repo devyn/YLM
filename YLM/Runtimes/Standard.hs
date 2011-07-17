@@ -4,6 +4,7 @@ module YLM.Runtimes.Standard (
 
 import YLM.Elem
 import YLM.Runtime
+import YLM.TextInterface
 import YLM.Interfaces.Standard
 import qualified Control.Exception as E
 
@@ -30,7 +31,12 @@ instance Runtime Standard where
                              else execute Standard [r']
     where f [] = return Nil
           f ((Cons (Label "error") (Cons (Label e) Nil)) : _) = E.throw (RuntimeException e)
-          f ((Cons (Label "put-line") (Cons (Label m) Nil)) : x) = putStrLn m >> execute Standard x
+          f ((Cons (Label "put-line") (Cons m Nil)) : x) = do let em = evaluate Standard m
+                                                              case em of
+                                                                Label s -> putStrLn s
+                                                                _       -> either (E.throw . RuntimeException) putStrLn
+                                                                           $ ylmWrite Standard [em]
+                                                              execute Standard x
           f ((Cons (Label "get-line") Nil) : x) = do l <- getLine
                                                      if null x
                                                        then return (Label l)
