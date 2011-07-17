@@ -9,7 +9,7 @@ import qualified Control.Exception as E
 
 instance Runtime Standard where
   -- Multiple-stage solver.
-  evaluate Standard x@(Cons (Label "quote") _) = x
+  evaluate Standard (Cons (Label "quote") (Cons a Nil)) = a
   evaluate Standard x = let r  = f x
                             r' = f r
                         in if r == r'
