@@ -14,10 +14,13 @@ import Data.Foldable (foldlM)
 
 instance Runtime Standard where
   -- Apply
-  evaluate (Standard m) (Cons (Label l) b) = maybe (Cons (Label l) b) (flip eApply (m,b))
-                                                   (Map.lookup l m)
-  evaluate (Standard m) (Label l)          = maybe (Label l) eSerialize (Map.lookup l m)
-  evaluate (Standard m) x                  = x
+  evaluate (Standard m) (Cons (Label l) b)                = maybe (Cons (Label l) b) (flip eApply (m,b))
+                                                                  (Map.lookup l m)
+  evaluate (Standard m) (Cons fn@(Cons (Label "->") x) d) = sapl fn (m,d)
+  evaluate (Standard m) (Cons a b)                        = evaluate (Standard m)
+                                                                     (Cons (evaluate (Standard m) a) b)
+  evaluate (Standard m) (Label l)                         = maybe (Label l) eSerialize (Map.lookup l m)
+  evaluate (Standard m) x                                 = x
   
   execute ri es = foldlM f (ri,Nil) es
     where f (r@(Standard m), _) (Cons (Label l) b) = if Map.member l m
