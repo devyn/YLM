@@ -83,12 +83,15 @@ standardLib = Standard $ Map.fromList
 
 aPutLine (m, x) = Cons (Label "put-line") x
 
-ePutLine (m, Cons (Label x) Nil) = do putStrLn x
-                                      return (m, Nil)
-ePutLine (m, Cons (Label x) d)   = do putStrLn x
-                                      ePutLine (m, d)
-ePutLine (m, Nil)                = return (m, Nil)
-ePutLine (m, b)                  = E.throw $ RuntimeException "type mismatch (expected: label...)"
+ePutLine (m, x@(Cons _ _))  = f (m, map (evaluate (Standard m)) $ ctl x)
+  where f (m, (Label x):[]) = do putStrLn x
+                                 return (m, Nil)
+        f (m, (Label x):d)  = do putStrLn x
+                                 f (m, d)
+        f (m, [])           = return (m, Nil)
+        f (m, b)            = E.throw $ RuntimeException "type mismatch (expected: label...)"
+ePutLine (m, Nil)           = return (m, Nil)
+ePutLine (m, b)             = E.throw $ RuntimeException "type mismatch (expected: label...)"
 
 aGetLine (m, x) = Cons (Label "get-line") x
 
@@ -142,7 +145,7 @@ aBind (m, x) = Cons (Label "bind") x
 eBind (m, (Cons (Cons (Label v) (Cons e Nil)) xs)) =
   do (Standard nm,r) <- execute (Standard m) [e]
      (Standard m',x') <- execute (Standard (Map.insert v (sdefent nm r) nm)) $ ctl xs
-     return (m', x')
+     return (m, x')
 
 szNat s = Cons (Label "native") (Cons (Label s) Nil)
 
