@@ -79,7 +79,10 @@ standardLib = Standard $ Map.fromList
                                                        , eExecute   = wrapE $ aWrite })
                            ,("bind",     StandardEntry { eSerialize = szNat "bind"
                                                        , eApply     = aBind
-                                                       , eExecute   = eBind })]
+                                                       , eExecute   = eBind })
+                           ,("id",       StandardEntry { eSerialize = sId
+                                                       , eApply     = sapl  sId
+                                                       , eExecute   = sexec sId })]
 
 aPutLine (m, x) = Cons (Label "put-line") x
 
@@ -146,6 +149,8 @@ eBind (m, (Cons (Label v) (Cons e xs))) =
   do (Standard nm,r) <- execute (Standard m) [e]
      (Standard m',x') <- execute (Standard (Map.insert v (sdefent nm r) nm)) $ ctl xs
      return (m, x')
+
+sId = ltc [Label "->", ltc [Label "x"], Label "x"]
 
 szNat s = Cons (Label "native") (Cons (Label s) Nil)
 
