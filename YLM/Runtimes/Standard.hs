@@ -70,7 +70,13 @@ standardLib = Standard $ Map.fromList
                                                        , eExecute   = sexec sTrue })
                            ,("false",    StandardEntry { eSerialize = sFalse
                                                        , eApply     = sapl  sFalse
-                                                       , eExecute   = sexec sFalse })]
+                                                       , eExecute   = sexec sFalse })
+                           ,("read",     StandardEntry { eSerialize = szNat "read"
+                                                       , eApply     = aRead
+                                                       , eExecute   = wrapE $ aRead })
+                           ,("write",    StandardEntry { eSerialize = szNat "write"
+                                                       , eApply     = aWrite
+                                                       , eExecute   = wrapE $ aWrite })]
 
 aPutLine (m, x) = Cons (Label "put-line") x
 
@@ -110,6 +116,23 @@ aExp (m,Nil)        = NumInt 1
 sTrue  = ltc [Label "->", ltc [Label "a", Label "b"], Label "a"]
 
 sFalse = ltc [Label "->", ltc [Label "a", Label "b"], Label "b"]
+
+aRead (m, (Cons (Label l) Nil)) =
+  case ylmRead (Standard m) l of
+    Left err     -> E.throw $ RuntimeException err
+    Right []     -> Nil
+    Right (x:[]) -> x
+    Right xs     -> ltc xs
+aRead (m, (Cons b Nil)) =
+  case evaluate (Standard m) b of
+    Label l -> aRead (m, (Cons (Label l) Nil))
+    _       -> E.throw $ RuntimeException "type mismatch (expected: label)"
+aRead (m, _) = E.throw $ RuntimeException "type mismatch (expected: label)"
+
+aWrite (m, xs) =
+  case ylmWrite (Standard m) (map (evaluate (Standard m)) $ ctl xs) of
+    Left err -> E.throw $ RuntimeException err
+    Right s  -> Label s
 
 szNat s = Cons (Label "native") (Cons (Label s) Nil)
 
