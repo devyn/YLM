@@ -58,7 +58,16 @@ standardLib = Standard $ Map.fromList
                                                        , eExecute   = wrapE $ aDiv })
                            ,("^",        StandardEntry { eSerialize = szNat "^"
                                                        , eApply     = aExp
-                                                       , eExecute   = wrapE $ aExp })]
+                                                       , eExecute   = wrapE $ aExp })
+                           ,("->",       StandardEntry { eSerialize = szNat "->"
+                                                       , eApply     = snd
+                                                       , eExecute   = wrapE $ snd })
+                           ,("true",     StandardEntry { eSerialize = sTrue
+                                                       , eApply     = sapl  sTrue
+                                                       , eExecute   = sexec sTrue })
+                           ,("false",    StandardEntry { eSerialize = sFalse
+                                                       , eApply     = sapl  sFalse
+                                                       , eExecute   = sexec sFalse })]
 
 aPutLine (m, x) = Cons (Label "put-line") x
 
@@ -92,8 +101,12 @@ aMul = mathematical (*) (*)    (NumInt 1)
 
 aDiv = mathematical (/) (quot) (NumInt 1)
 
-aExp (m,(Cons c d)) = mathematicalr (**) (^) c (m,d)
+aExp (m,(Cons c d)) = mathematicalr (flip (**)) (flip (^)) c (m,d)
 aExp (m,Nil)        = NumInt 1
+
+sTrue  = ltc [Label "->", ltc [Label "a", Label "b"], Label "a"]
+
+sFalse = ltc [Label "->", ltc [Label "a", Label "b"], Label "b"]
 
 szNat s = Cons (Label "native") (Cons (Label s) Nil)
 
@@ -105,6 +118,8 @@ sfun args body (m, x) = if length args == length ia
                                                            ++ " argument(s), got " ++ show (length ia))
   where ia = ctl x
         bv = Map.fromList $ zip (map (\ (Label l) -> l) args) (map (sdefent m) ia)
+
+sdefent :: Map String StandardEntry -> Elem -> StandardEntry
 
 sdefent m x = StandardEntry { eSerialize = ex
                             , eApply     = sapl ex
