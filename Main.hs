@@ -1,4 +1,5 @@
 import YLM.Runtime
 import YLM.Runtimes.Standard
+import YLM.Repl
 
-main = repl Standard
+main = repl standardLib

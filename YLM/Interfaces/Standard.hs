@@ -1,25 +1,38 @@
-module YLM.Interfaces.Standard (Standard(..)) where
+module YLM.Interfaces.Standard (Standard(..), StandardEntry (..)) where
 
 import Prelude hiding (elem)
 import YLM.Elem
 import YLM.TextInterface
+import YLM.PrettyPrint
 import Text.Parsec hiding ((<|>), optional, label, many)
 import Control.Applicative
 import Data.Maybe
+import Data.Map (Map)
+import qualified Data.Map as Map
+import Data.List (find)
 
-data Standard = Standard deriving (Show)
+data Standard = Standard (Map String StandardEntry)
+
+data StandardEntry = StandardEntry {
+  eSerialize :: Elem,
+  eApply     :: (Map String StandardEntry, Elem) -> Elem,
+  eExecute   :: (Map String StandardEntry, Elem) -> IO (Map String StandardEntry, Elem)
+}
+
+instance Show Standard where
+  show (Standard m) = "Standard :" ++ show (Map.size m)
 
 instance TextInterface Standard where
-  ylmRead Standard [] = Right []
-  ylmRead Standard text =
+  ylmRead (Standard _) [] = Right []
+  ylmRead (Standard _) text =
     case parse (optional whitespace *>
                 elem `sepBy` optional whitespace
                 <* optional whitespace <* eof) "" text of
       Left  err -> Left (show err)
       Right ell -> Right ell
-  ylmWrite Standard []     = Right $ ""
-  ylmWrite Standard (e:[]) = Right $ putStandard e
-  ylmWrite Standard (e:es) = either Left (\x -> Right $ (putStandard e) ++ "\n" ++ x) $ ylmWrite Standard es
+  ylmWrite   (Standard _) []     = Right $ ""
+  ylmWrite   (Standard _) (e:[]) = Right $ putStandard e
+  ylmWrite r@(Standard _) (e:es) = either Left (\x -> Right $ (putStandard e) ++ "\n" ++ x) $ ylmWrite r es
 
 putStandard (Cons (Label "quote")
                   (Cons x Nil))   = '\'' : putStandard x
@@ -31,7 +44,7 @@ putStandard i@(Cons _ _)          = "(" ++ f i ++ ")"
 putStandard (Label s)
   | null s                        = "\"\""
   | any (\x -> any (== x)
-               " ()\"\r\n\0") s   = '\"' : fmtEscape s ++ "\""
+               " ()'\"\r\n\0") s  = '\"' : fmtEscape s ++ "\""
   | otherwise                     = s
 putStandard (NumInt n)            = show n
 putStandard (NumFloat n)          = show n
@@ -43,6 +56,49 @@ fmtEscape ('\n' : s) = "\\n"  ++ fmtEscape s
 fmtEscape ('\0' : s) = "\\0"  ++ fmtEscape s
 fmtEscape (c    : s) = c      :  fmtEscape s
 fmtEscape []         = []
+
+instance PrettyPrint Standard where
+  ylmPrettyPrint (Standard m) o (e:[]) = Right $ prettyStandard m o e
+  ylmPrettyPrint (Standard m) o (e:es) = either Left (\x ->
+                                                       Right $ (prettyStandard m o e) ++ "\n"
+                                                               ++ (take o $ repeat ' ') ++ x)
+                                           $ ylmPrettyPrint (Standard m) o es
+  
+prettyStandard m o (Cons (Label "quote")
+                         (Cons x Nil))     = "\ESC[35m\'\ESC[0m" ++ prettyStandard m o x
+prettyStandard m o Nil                     = "()"
+prettyStandard m o i@(Cons a b)            = case a of
+                                               (Label l) -> 
+                                                 if (length $ f m o i) > 75
+                                                   then "(" ++ prettyStandard m o a ++ " " ++ cf m (o+length l+2) b ++ ")"
+                                                   else "(" ++ f m o i ++ ")"
+                                               _ ->
+                                                 if (length $ f m o i) > 75
+                                                   then "(" ++ cf m (o+1) i ++ ")"
+                                                   else "(" ++ f  m  o    i ++ ")"
+  where f  m o (Cons a (Cons b c))         = prettyStandard m o a ++ " " ++ f m o (Cons b c)
+        f  m o (Cons a Nil)                = prettyStandard m o a
+        f  m o (Cons a b)                  = prettyStandard m o a ++ " . " ++ prettyStandard m o b
+        cf m o (Cons a (Cons b c))         = prettyStandard m o a ++ "\n" ++ (take o $ repeat ' ') ++ cf m o (Cons b c)
+        cf m o (Cons a Nil)                = prettyStandard m o a
+        cf m o (Cons a b)                  = prettyStandard m o a ++ "\n" ++ (take o $ repeat ' ') ++ ". " ++ prettyStandard m o b
+prettyStandard m o (Label s)
+  | null s                                 = "\ESC[1;"++c++"m\"\"\ESC[0m"
+  | any (\x -> any (== x)
+               " ()'\"\r\n\0") s           = "\ESC["++c++"m\"" ++ fmtPrettyEscape c s ++ "\"\ESC[0m"
+  | otherwise                              = "\ESC[1;"++c++"m" ++ s ++ "\ESC[0m"
+  where c = if (Map.member s m)
+              then "32"
+              else "33"
+prettyStandard m o (NumInt n)              = "\ESC[36m" ++ show n ++ "\ESC[0m"
+prettyStandard m o (NumFloat n)            = "\ESC[36m" ++ show n ++ "\ESC[0m"
+prettyStandard m o (Pointer p e)           = prettyStandard m o e
+
+fmtPrettyEscape :: String -> String -> String
+fmtPrettyEscape c (ch : s) = maybe [ch] snd (find ((== ch).fst)
+                                            (zip "\"\r\n\0" (map (("\ESC[0;35m\\"++).(:"\ESC["++c++"m")) "\"rn0")))
+                             ++ fmtPrettyEscape c s
+fmtPrettyEscape c []       = []
 
 elem, form, list, cons, num, int, float, label :: Parsec String () Elem
 whitespace :: Parsec String () String
@@ -71,7 +127,7 @@ float = (\ a b c d ->
 
 label = Label <$> f
   where f = try (char '"' *> many (noneOf "\"\\" <|> escapeCode) <* char '"')
-            <|> many1 (noneOf " ()\"")
+            <|> many1 (noneOf " ()'\"")
 
 escapeCode = f <$> (char '\\' *> oneOf "\"\\rn0")
   where f '\"' = '\"'
