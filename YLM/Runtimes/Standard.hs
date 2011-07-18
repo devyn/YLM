@@ -142,7 +142,7 @@ aWrite (m, xs) =
 
 aBind (m, x) = Cons (Label "bind") x
 
-eBind (m, (Cons (Cons (Label v) (Cons e Nil)) xs)) =
+eBind (m, (Cons (Label v) (Cons e xs))) =
   do (Standard nm,r) <- execute (Standard m) [e]
      (Standard m',x') <- execute (Standard (Map.insert v (sdefent nm r) nm)) $ ctl xs
      return (m, x')
