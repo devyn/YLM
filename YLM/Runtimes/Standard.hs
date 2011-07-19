@@ -12,7 +12,8 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Foldable (foldlM, foldrM)
 import Control.Monad.Trans
-import Data.List (find)
+import Data.List
+import Control.Applicative
 
 instance Runtime Standard where
   -- Apply
@@ -101,7 +102,10 @@ standardLib = Standard $ Map.fromList
                                                        , eExecute   = wrapE $ aHead })
                            ,("tail",     StandardEntry { eSerialize = szNat "tail"
                                                        , eApply     = aTail
-                                                       , eExecute   = wrapE $ aTail })]
+                                                       , eExecute   = wrapE $ aTail })
+                           ,("=",        StandardEntry { eSerialize = szNat "="
+                                                       , eApply     = aEq
+                                                       , eExecute   = wrapE $ aEq })]
 
 aPutLine (m, x) = Right $ Cons (Label "put-line") x
 
@@ -201,6 +205,17 @@ aTail (m, (Cons l Nil)) = case evaluate (Standard m) l of
                  Right _          -> Left  "type mismatch (expected: list)"
                  Left  err        -> Left  err
 aTail (m, _) = Left "expected 1 argument of type list"
+
+aEq (m, l@(Cons _ (Cons _ _))) = Right $ tBool (all (\ (a, b) -> a == b) ((,) <$> ev <*> ev))
+  where ev = map t (filter c (map (evaluate (Standard m)) $ ctl l))
+        t (Right x) = x
+        c (Right x) = True
+        c (Left  x) = False
+        tBool True  = sTrue
+        tBool False = sFalse
+aEq (m, l@(Cons _ Nil))        = Right sTrue
+aEq (m, Nil)                   = Right sFalse
+aEq (m, _)                     = Left "expected arguments"
 
 szNat s = Cons (Label "native") (Cons (Label s) Nil)
 
