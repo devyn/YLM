@@ -50,12 +50,9 @@ putStandard (NumInt n)            = show n
 putStandard (NumFloat n)          = show n
 putStandard (Pointer p e)         = putStandard e
 
-fmtEscape ('\"' : s) = "\\\"" ++ fmtEscape s
-fmtEscape ('\r' : s) = "\\r"  ++ fmtEscape s
-fmtEscape ('\n' : s) = "\\n"  ++ fmtEscape s
-fmtEscape ('\0' : s) = "\\0"  ++ fmtEscape s
-fmtEscape (c    : s) = c      :  fmtEscape s
-fmtEscape []         = []
+fmtEscape (c : s) = (maybe [c] (('\\':).(: []).snd)
+                     $ find ((== c).fst) (zip "\"\\\r\n\0\a\b\f\t\v\ESC\'" "\"\\rn0abftve'")) ++ fmtEscape s
+fmtEscape []      = []
 
 instance PrettyPrint Standard where
   ylmPrettyPrint (Standard m) o (e:[]) = Right $ prettyStandard m o e
@@ -65,28 +62,28 @@ instance PrettyPrint Standard where
                                            $ ylmPrettyPrint (Standard m) o es
   
 prettyStandard m o (Cons (Label "quote")
-                         (Cons x Nil))     = "\ESC[35m\'\ESC[0m" ++ prettyStandard m o x
-prettyStandard m o Nil                     = "()"
-prettyStandard m o i@(Cons a b)            = case a of
-                                               (Label l) -> 
-                                                 if (length $ f m o i) > 75
-                                                   then "(" ++ prettyStandard m o a ++ " " ++ cf m (o+length l+2) b ++ ")"
-                                                   else "(" ++ f m o i ++ ")"
-                                               _ ->
-                                                 if (length $ f m o i) > 75
-                                                   then "(" ++ cf m (o+1) i ++ ")"
-                                                   else "(" ++ f  m  o    i ++ ")"
-  where f  m o (Cons a (Cons b c))         = prettyStandard m o a ++ " " ++ f m o (Cons b c)
-        f  m o (Cons a Nil)                = prettyStandard m o a
-        f  m o (Cons a b)                  = prettyStandard m o a ++ " . " ++ prettyStandard m o b
-        cf m o (Cons a (Cons b c))         = prettyStandard m o a ++ "\n" ++ (take o $ repeat ' ') ++ cf m o (Cons b c)
-        cf m o (Cons a Nil)                = prettyStandard m o a
-        cf m o (Cons a b)                  = prettyStandard m o a ++ "\n" ++ (take o $ repeat ' ') ++ ". " ++ prettyStandard m o b
+                         (Cons x Nil))         = "\ESC[35m\'\ESC[0m" ++ prettyStandard m o x
+prettyStandard m o Nil                         = "()"
+prettyStandard m o i@(Cons a b)                = case a of
+                                                   (Label l) -> 
+                                                     if (length $ f m o i) > 75
+                                                       then "(" ++ prettyStandard m o a ++ " " ++ cf m (o+length l+2) b ++ ")"
+                                                       else "(" ++ f m o i ++ ")"
+                                                   _ ->
+                                                     if (length $ f m o i) > 75
+                                                       then "(" ++ cf m (o+1) i ++ ")"
+                                                       else "(" ++ f  m  o    i ++ ")"
+  where f  m o (Cons a (Cons b c))             = prettyStandard m o a ++ " " ++ f m o (Cons b c)
+        f  m o (Cons a Nil)                    = prettyStandard m o a
+        f  m o (Cons a b)                      = prettyStandard m o a ++ " . " ++ prettyStandard m o b
+        cf m o (Cons a (Cons b c))             = prettyStandard m o a ++ "\n" ++ (take o $ repeat ' ') ++ cf m o (Cons b c)
+        cf m o (Cons a Nil)                    = prettyStandard m o a
+        cf m o (Cons a b)                      = prettyStandard m o a ++ "\n" ++ (take o $ repeat ' ') ++ ". " ++ prettyStandard m o b
 prettyStandard m o (Label s)
-  | null s                                 = "\ESC[1;"++c++"m\"\"\ESC[0m"
+  | null s                                     = "\ESC[1;"++c++"m\"\"\ESC[0m"
   | any (\x -> any (== x)
-               " ()'\"\r\n\0") s           = "\ESC["++c++"m\"" ++ fmtPrettyEscape c s ++ "\"\ESC[0m"
-  | otherwise                              = "\ESC[1;"++c++"m" ++ s ++ "\ESC[0m"
+               " ()'\"\r\n\0\a\b\f\t\v\ESC") s = "\ESC["++c++"m\"" ++ fmtPrettyEscape c s ++ "\"\ESC[0m"
+  | otherwise                                  = "\ESC[1;"++c++"m" ++ s ++ "\ESC[0m"
   where c = if (Map.member s m)
               then "32"
               else "33"
@@ -96,7 +93,7 @@ prettyStandard m o (Pointer p e)           = prettyStandard m o e
 
 fmtPrettyEscape :: String -> String -> String
 fmtPrettyEscape c (ch : s) = maybe [ch] snd (find ((== ch).fst)
-                                            (zip "\"\r\n\0" (map (("\ESC[0;35m\\"++).(:"\ESC["++c++"m")) "\"rn0")))
+                                            (zip "\"\\\r\n\0\a\b\f\t\v\ESC" (map (("\ESC[0;35m\\"++).(:"\ESC["++c++"m")) "\"\\rn0abftve")))
                              ++ fmtPrettyEscape c s
 fmtPrettyEscape c []       = []
 
@@ -129,11 +126,6 @@ label = Label <$> f
   where f = try (char '"' *> many (noneOf "\"\\" <|> escapeCode) <* char '"')
             <|> many1 (noneOf " ()'\"")
 
-escapeCode = f <$> (char '\\' *> oneOf "\"\\rn0")
-  where f '\"' = '\"'
-        f '\\' = '\\'
-        f 'r'  = '\r'
-        f 'n'  = '\n'
-        f '0'  = '\0'
+escapeCode = (\ c -> maybe '\0' snd $ find ((== c).fst) (zip "\"\\rn0abftve" "\"\\\r\n\0\a\b\f\t\v\ESC")) <$> (char '\\' *> oneOf "\"\\rn0abftve")
 
 whitespace = many1 (oneOf " \t\r\n")
