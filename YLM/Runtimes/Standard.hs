@@ -24,11 +24,11 @@ instance Runtime Standard where
   
   execute ri es = foldlM f (ri,Nil) es
     where f (r@(Standard m), _) (Cons (Label l) b) = if Map.member l m
-                                                     then maybe (return (r, Nil))
-                                                            (\ x -> do (m', b') <- eExecute x (m, b)
-                                                                       return (Standard m', b'))
+                                                       then maybe (return (r, Nil))
+                                                                  (\ x -> do (m', b') <- eExecute x (m, b)
+                                                                             return (Standard m', b'))
                                                             (Map.lookup l m)
-                                                     else return (r, Cons (Label l) b)
+                                                       else return (r, Cons (Label l) b)
           f (r@(Standard m), _) x                  = return (r, evaluate r x)
 
 standardLib = Standard $ Map.fromList
