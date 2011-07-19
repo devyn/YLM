@@ -15,8 +15,8 @@ data Standard = Standard (Map String StandardEntry)
 
 data StandardEntry = StandardEntry {
   eSerialize :: Elem,
-  eApply     :: (Map String StandardEntry, Elem) -> Elem,
-  eExecute   :: (Map String StandardEntry, Elem) -> IO (Map String StandardEntry, Elem)
+  eApply     :: (Map String StandardEntry, Elem) -> Either String Elem,
+  eExecute   :: (Map String StandardEntry, Elem) -> IO (Either String (Map String StandardEntry, Elem))
 }
 
 instance Show Standard where
