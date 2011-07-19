@@ -23,8 +23,7 @@ repl r = do
           case ie of
             [Label "quit"] -> return ()
             _ -> do
-              mre <- E.catch (Right `fmap` execute r ie)
-                     (return . Left . (show :: E.SomeException -> [Char]))
+              mre <- execute r ie
               case mre of
                 Left err -> do
                   putStrLn $ "\ESC[1m" ++ (show r) ++ "!> \ESC[0;31mERROR: " ++ err ++ "\ESC[0m"

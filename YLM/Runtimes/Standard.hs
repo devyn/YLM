@@ -10,26 +10,31 @@ import YLM.Interfaces.Standard
 import qualified Control.Exception as E
 import Data.Map (Map)
 import qualified Data.Map as Map
-import Data.Foldable (foldlM)
+import Data.Foldable (foldlM, foldrM)
+import Control.Monad.Trans
 
 instance Runtime Standard where
   -- Apply
-  evaluate (Standard m) (Cons (Label l) b)                = maybe (Cons (Label l) b) (flip eApply (m,b))
+  evaluate (Standard m) (Cons (Label l) b)                = maybe (Right $ Cons (Label l) b) (flip eApply (m,b))
                                                                   (Map.lookup l m)
   evaluate (Standard m) (Cons fn@(Cons (Label "->") x) d) = sapl fn (m,d)
-  evaluate (Standard m) (Cons a b)                        = evaluate (Standard m)
-                                                                     (Cons (evaluate (Standard m) a) b)
-  evaluate (Standard m) (Label l)                         = maybe (Label l) eSerialize (Map.lookup l m)
-  evaluate (Standard m) x                                 = x
+  evaluate (Standard m) (Cons a b)                        = do x <- evaluate (Standard m) a
+                                                               evaluate (Standard m) (Cons x b)
+  evaluate (Standard m) (Label l)                         = maybe (Right $ Label l) (Right . eSerialize) (Map.lookup l m)
+  evaluate (Standard m) x                                 = Right x
   
-  execute ri es = foldlM f (ri,Nil) es
-    where f (r@(Standard m), _) (Cons (Label l) b) = if Map.member l m
-                                                       then maybe (return (r, Nil))
-                                                                  (\ x -> do (m', b') <- eExecute x (m, b)
-                                                                             return (Standard m', b'))
-                                                            (Map.lookup l m)
-                                                       else return (r, Cons (Label l) b)
-          f (r@(Standard m), _) x                  = return (r, evaluate r x)
+  execute (Standard m) (i:es) = f (Standard m) i
+                                >>= either (return.Left) (\ (r', e') ->
+                                                           if null es
+                                                           then return $ Right (r', e')
+                                                           else do execute r' es >>= either (return.Left) (\ (r'', e'') ->
+                                                                                                   return $ Right (r'', e'')))
+    where f r@(Standard m) (Cons (Label l) b) = maybe (return (Right (r, Cons (Label l) b)))
+                                                      (\ e -> eExecute e (m, b) >>= either (return.Left) (\ (m', b') ->
+                                                                                                           return $ Right (Standard m', b')))
+                                                      (Map.lookup l m)
+          f r@(Standard m) x                  = flip (either $ return . Left) (evaluate r x) (\ b' ->
+                                                                                               return $ Right (r, b'))
 
 standardLib = Standard $ Map.fromList
                            [("put-line", StandardEntry { eSerialize = szNat "put-line"
@@ -43,7 +48,7 @@ standardLib = Standard $ Map.fromList
                                                        , eExecute   = wrapE aQuote })
                            ,("error",    StandardEntry { eSerialize = szNat "error"
                                                        , eApply     = aError
-                                                       , eExecute   = aError })
+                                                       , eExecute   = wrapE $ aError })
                            ,("def",      StandardEntry { eSerialize = szNat "def"
                                                        , eApply     = aDef
                                                        , eExecute   = eDef })
@@ -63,8 +68,8 @@ standardLib = Standard $ Map.fromList
                                                        , eApply     = aExp
                                                        , eExecute   = wrapE $ aExp })
                            ,("->",       StandardEntry { eSerialize = szNat "->"
-                                                       , eApply     = (\(m,x)->Cons (Label "->") x)
-                                                       , eExecute   = wrapE $ (\(m,x)->Cons (Label "->") x) })
+                                                       , eApply     = (\(m,x)->Right $ Cons (Label "->") x)
+                                                       , eExecute   = wrapE $ (\(m,x)->Right $ Cons (Label "->") x) })
                            ,("true",     StandardEntry { eSerialize = sTrue
                                                        , eApply     = sapl  sTrue
                                                        , eExecute   = sexec sTrue })
@@ -84,32 +89,32 @@ standardLib = Standard $ Map.fromList
                                                        , eApply     = sapl  sId
                                                        , eExecute   = sexec sId })]
 
-aPutLine (m, x) = Cons (Label "put-line") x
+aPutLine (m, x) = Right $ Cons (Label "put-line") x
 
-ePutLine (m, x@(Cons _ _))  = f (m, map (evaluate (Standard m)) $ ctl x)
+ePutLine (m, x@(Cons _ _))  = either (return . Left) (\ a -> f (m, a)) (mapM (evaluate (Standard m)) $ ctl x)
   where f (m, (Label x):[]) = do putStrLn x
-                                 return (m, Nil)
+                                 return $ Right (m, Nil)
         f (m, (Label x):d)  = do putStrLn x
                                  f (m, d)
-        f (m, [])           = return (m, Nil)
-        f (m, b)            = E.throw $ RuntimeException "type mismatch (expected: label...)"
-ePutLine (m, Nil)           = return (m, Nil)
-ePutLine (m, b)             = E.throw $ RuntimeException "type mismatch (expected: label...)"
+        f (m, [])           = return $ Right (m, Nil)
+        f (m, b)            = return $ Left "type mismatch (expected: label...)"
+ePutLine (m, Nil)           = return $ Right (m, Nil)
+ePutLine (m, b)             = return $ Left "type mismatch (expected: label...)"
 
-aGetLine (m, x) = Cons (Label "get-line") x
+aGetLine (m, x) = Right $ Cons (Label "get-line") x
 
 eGetLine (m, _) = do l <- getLine
-                     return (m, Label l)
+                     return $ Right (m, Label l)
 
-aQuote (m, (Cons x Nil)) = x
-aQuote (m, _)            = E.throw $ RuntimeException "type mismatch (expected: any)"
+aQuote (m, (Cons x Nil)) = Right x
+aQuote (m, _)            = Left "type mismatch (expected: any)"
 
-aError (m, Cons (Label l) Nil) = E.throw $ RuntimeException l
-aError (m, _)                  = E.throw $ RuntimeException "type mismatch (expected: label)"
+aError (m, Cons (Label l) Nil) = Left l
+aError (m, _)                  = Left "type mismatch (expected: label)"
 
-aDef (m, x) = Cons (Label "def") x
+aDef (m, x) = Right $ Cons (Label "def") x
 
-eDef (m, Cons (Label l) (Cons x Nil)) = return (Map.insert l (sdefent m x) m, Label l)
+eDef (m, Cons (Label l) (Cons x Nil)) = return $ either Left (\ v -> Right (Map.insert l v m, Label l)) (sdefent m x)
 
 aAdd = mathematical (+) (+)    (NumInt 0)
 
@@ -120,7 +125,7 @@ aMul = mathematical (*) (*)    (NumInt 1)
 aDiv = mathematical (/) (quot) (NumInt 1)
 
 aExp (m,(Cons c d)) = mathematicalr (flip (**)) (flip (^)) c (m,d)
-aExp (m,Nil)        = NumInt 1
+aExp (m,Nil)        = Right $ NumInt 1
 
 sTrue  = ltc [Label "->", ltc [Label "a", Label "b"], Label "a"]
 
@@ -128,55 +133,59 @@ sFalse = ltc [Label "->", ltc [Label "a", Label "b"], Label "b"]
 
 aRead (m, (Cons (Label l) Nil)) =
   case ylmRead (Standard m) l of
-    Left err     -> E.throw $ RuntimeException err
-    Right []     -> Nil
-    Right (x:[]) -> x
-    Right xs     -> ltc xs
+    Left err     -> Left err
+    Right []     -> Right Nil
+    Right (x:[]) -> Right x
+    Right xs     -> Right $ ltc xs
 aRead (m, (Cons b Nil)) =
   case evaluate (Standard m) b of
-    Label l -> aRead (m, (Cons (Label l) Nil))
-    _       -> E.throw $ RuntimeException "type mismatch (expected: label)"
-aRead (m, _) = E.throw $ RuntimeException "type mismatch (expected: label)"
+    Right (Label l) -> aRead (m, (Cons (Label l) Nil))
+    Right _         -> Left "type mismatch (expected: label)"
+    Left  err       -> Left err
+aRead (m, _)         = Left "type mismatch (expected: label)"
 
 aWrite (m, xs) =
-  case ylmWrite (Standard m) (map (evaluate (Standard m)) $ ctl xs) of
-    Left err -> E.throw $ RuntimeException err
-    Right s  -> Label s
+  do xs' <- mapM (evaluate (Standard m)) $ ctl xs
+     case ylmWrite (Standard m) xs' of
+       Left err -> Left err
+       Right s  -> Right $ Label s
 
-aBind (m, x) = Cons (Label "bind") x
+aBind (m, x) = Right $ Cons (Label "bind") x
 
 eBind (m, (Cons (Label v) (Cons e xs))) =
-  do (Standard nm,r) <- execute (Standard m) [e]
-     (Standard m',x') <- execute (Standard (Map.insert v (sdefent nm r) nm)) $ ctl xs
-     return (m, x')
+  do va <- (execute (Standard m) [e]) 
+     flip (either $ return . Left) va $ \ (Standard nm, r) ->
+       do vb <- either (return . Left) (\ vl -> execute (Standard (Map.insert v vl nm)) $ ctl xs) (sdefent nm r)
+          flip (either $ return . Left) vb $ \ (Standard m', x') ->
+            return $ Right (m, x')
 
 sId = ltc [Label "->", ltc [Label "x"], Label "x"]
 
 szNat s = Cons (Label "native") (Cons (Label s) Nil)
 
-wrapE f (m, x) = return (m, f (m, x))
+wrapE f (m, x) = either (return . Left) (\ a -> return $ Right (m, a)) $ f (m, x)
 
 sfun args body (m, x) = if length args == length ia
-                          then evaluate (Standard $ Map.union bv m) body
-                          else E.throw $ RuntimeException ("expected " ++ show (length args)
+                          then either Left (\ v -> evaluate (Standard $ Map.union v m) body) bv
+                          else Left ("expected " ++ show (length args)
                                                            ++ " argument(s), got " ++ show (length ia))
   where ia = ctl x
-        bv = Map.fromList $ zip (map (\ (Label l) -> l) args) (map (sdefent m) ia)
+        bv = either Left (\ v -> Right $ Map.fromList $ zip (map (\ (Label l) -> l) args) v) (mapM (sdefent m) ia)
 
-sdefent :: Map String StandardEntry -> Elem -> StandardEntry
+sdefent :: Map String StandardEntry -> Elem -> Either String StandardEntry
 
-sdefent m x = StandardEntry { eSerialize = ex
-                            , eApply     = sapl ex
-                            , eExecute   = sexec ex }
-  where ex = evaluate (Standard m) x
+sdefent m x = either Left (\ ex -> Right $ StandardEntry { eSerialize = ex
+                                                         , eApply     = sapl ex
+                                                         , eExecute   = sexec ex }) lx
+  where lx = evaluate (Standard m) x
 
 sapl fb@(Cons (Label "->")
               (Cons ar (Cons fn Nil))) (m,x) = sfun (ctl ar) fn (m,x)
-sapl b (m,x)  = E.throw $ RuntimeException $ "type mismatch: (" ++
+sapl b (m,x)  = Left $ "type mismatch: (" ++
                           either (const "!write-error") id (ylmWrite standardLib [b]) ++
                           " is not a callable form)"
 
-sexec b (m,a) = return (m,sapl b (m,a))
+sexec b (m,a) = return $ either Left (\ v -> Right (m,v)) (sapl b (m,a))
 
 ctl Nil = []
 ctl (Cons h t) = h : ctl t
@@ -188,28 +197,30 @@ mathematical :: (Double  -> Double  -> Double )
              -> (Integer -> Integer -> Integer)
              -> Elem
              -> (Map String StandardEntry, Elem)
-             -> Elem
+             -> Either String Elem
 
-mathematical ff fi ss (m,a) = foldl f ss (ctl a)
+mathematical ff fi ss (m,a) = foldlM f ss (ctl a)
   where f s e = let ee = evaluate (Standard m) e
                 in case (s,ee) of
-                  (NumInt   si, NumInt   ni) -> NumInt   $ si `fi` ni
-                  (NumInt   si, NumFloat nf) -> NumFloat $ fromIntegral si `ff` nf
-                  (NumFloat sf, NumInt   ni) -> NumFloat $ sf `ff` fromIntegral ni
-                  (NumFloat sf, NumFloat nf) -> NumFloat $ sf `ff` nf
-                  (_, _)                     -> ltc [Label "error", Label "type error"]
+                  (NumInt   si, Right (NumInt   ni)) -> Right $ NumInt   $ si `fi` ni
+                  (NumInt   si, Right (NumFloat nf)) -> Right $ NumFloat $ fromIntegral si `ff` nf
+                  (NumFloat sf, Right (NumInt   ni)) -> Right $ NumFloat $ sf `ff` fromIntegral ni
+                  (NumFloat sf, Right (NumFloat nf)) -> Right $ NumFloat $ sf `ff` nf
+                  (_, Right _)                       -> Left "type mismatch (expected: int or float)"
+                  (_, Left  err)                     -> Left err
 
 mathematicalr :: (Double  -> Double  -> Double )
               -> (Integer -> Integer -> Integer)
               -> Elem
               -> (Map String StandardEntry, Elem)
-              -> Elem
+              -> Either String Elem
 
-mathematicalr ff fi ss (m,a) = foldr f ss (ctl a)
+mathematicalr ff fi ss (m,a) = foldrM f ss (ctl a)
   where f s e = let ee = evaluate (Standard m) e
                 in case (s,ee) of
-                  (NumInt   si, NumInt   ni) -> NumInt   $ si `fi` ni
-                  (NumInt   si, NumFloat nf) -> NumFloat $ fromIntegral si `ff` nf
-                  (NumFloat sf, NumInt   ni) -> NumFloat $ sf `ff` fromIntegral ni
-                  (NumFloat sf, NumFloat nf) -> NumFloat $ sf `ff` nf
-                  (_, _)                     -> ltc [Label "error", Label "type error"]
+                  (NumInt   si, Right (NumInt   ni)) -> Right $ NumInt   $ si `fi` ni
+                  (NumInt   si, Right (NumFloat nf)) -> Right $ NumFloat $ fromIntegral si `ff` nf
+                  (NumFloat sf, Right (NumInt   ni)) -> Right $ NumFloat $ sf `ff` fromIntegral ni
+                  (NumFloat sf, Right (NumFloat nf)) -> Right $ NumFloat $ sf `ff` nf
+                  (_, Right _)                       -> Left "type mismatch (expected: int or float)"
+                  (_, Left  err)                     -> Left err
