@@ -35,6 +35,8 @@ instance Runtime Standard where
                                                       (Map.lookup l m)
           f r@(Standard m) x                  = flip (either $ return . Left) (evaluate r x) (\ b' ->
                                                                                                return $ Right (r, b'))
+  execute (Standard m) xs                     = return $ last $ map (\ a -> either Left (\ a' -> Right $ (Standard m, a'))
+                                                                            (evaluate (Standard m) a)) xs
 
 standardLib = Standard $ Map.fromList
                            [("put-line", StandardEntry { eSerialize = szNat "put-line"
