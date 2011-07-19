@@ -134,13 +134,15 @@ aDef (m, x) = Right $ Cons (Label "def") x
 
 eDef (m, Cons (Label l) (Cons x Nil)) = return $ either Left (\ v -> Right (Map.insert l v m, Label l)) (sdefent m x)
 
-aAdd = mathematical (+) (+)    (NumInt 0)
+aAdd                = mathematical (+) (+)    (NumInt 0)
 
-aSub = mathematical (-) (-)    (NumInt 0)
+aSub (m, Cons c d)  = mathematical (-) (-) c (m, d)
+aSub (m, Nil)       = Right $ NumInt 0
 
-aMul = mathematical (*) (*)    (NumInt 1)
+aMul                = mathematical (*) (*)    (NumInt 1)
 
-aDiv = mathematical (/) (quot) (NumInt 1)
+aDiv (m, Cons c d)  = mathematical (/) (quot) c (m, d)
+aDiv (m, Nil)       = Right $ NumInt 1
 
 aExp (m,(Cons c d)) = mathematicalr (flip (**)) (flip (^)) c (m,d)
 aExp (m,Nil)        = Right $ NumInt 1
