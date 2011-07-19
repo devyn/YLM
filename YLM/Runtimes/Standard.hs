@@ -12,6 +12,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Foldable (foldlM, foldrM)
 import Control.Monad.Trans
+import Data.List (find)
 
 instance Runtime Standard where
   -- Apply
@@ -88,7 +89,19 @@ standardLib = Standard $ Map.fromList
                                                        , eExecute   = eBind })
                            ,("id",       StandardEntry { eSerialize = sId
                                                        , eApply     = sapl  sId
-                                                       , eExecute   = sexec sId })]
+                                                       , eExecute   = sexec sId })
+                           ,("list",     StandardEntry { eSerialize = szNat "list" {- may be serializable in the future -}
+                                                       , eApply     = aList
+                                                       , eExecute   = wrapE $ aList })
+                           ,("cons",     StandardEntry { eSerialize = szNat "cons"
+                                                       , eApply     = aCons
+                                                       , eExecute   = wrapE $ aCons })
+                           ,("head",     StandardEntry { eSerialize = szNat "head"
+                                                       , eApply     = aHead
+                                                       , eExecute   = wrapE $ aHead })
+                           ,("tail",     StandardEntry { eSerialize = szNat "tail"
+                                                       , eApply     = aTail
+                                                       , eExecute   = wrapE $ aTail })]
 
 aPutLine (m, x) = Right $ Cons (Label "put-line") x
 
@@ -161,6 +174,33 @@ eBind (m, (Cons (Label v) (Cons e xs))) =
             return $ Right (m, x')
 
 sId = ltc [Label "->", ltc [Label "x"], Label "x"]
+
+aList (m, x) = case find cond lt of
+                 Just e  -> e
+                 Nothing -> Right $ ltc $ map (either undefined id) lt
+  where lt = map (evaluate (Standard m)) (ctl x)
+        cond x = case x of { (Left _) -> True; (Right _) -> False }
+
+aCons (m, (Cons x (Cons l Nil))) = case evaluate (Standard m) x of
+                                     Left  err -> Left err
+                                     Right v   -> case evaluate (Standard m) l of
+                                                    Left  err -> Left err
+                                                    Right n   -> Right $ Cons v n
+aCons (m, _) = Left "expected 2 arguments"
+
+aHead (m, (Cons l Nil)) = case evaluate (Standard m) l of
+                 Right (Cons x _) -> Right x
+                 Right Nil        -> Left  "empty list"
+                 Right _          -> Left  "type mismatch (expected: list)"
+                 Left  err        -> Left  err
+aHead (m, _) = Left "expected 1 argument of type list"
+
+aTail (m, (Cons l Nil)) = case evaluate (Standard m) l of
+                 Right (Cons _ y) -> Right y
+                 Right Nil        -> Left  "empty list"
+                 Right _          -> Left  "type mismatch (expected: list)"
+                 Left  err        -> Left  err
+aTail (m, _) = Left "expected 1 argument of type list"
 
 szNat s = Cons (Label "native") (Cons (Label s) Nil)
 
