@@ -21,7 +21,8 @@ instance Runtime Standard where
                                                                   (Map.lookup l m)
   evaluate (Standard m) (Cons fn@(Cons (Label "->") x) d) = sapl fn (m,d)
   evaluate (Standard m) (Cons a b)                        = do x <- evaluate (Standard m) a
-                                                               evaluate (Standard m) (Cons x b)
+                                                               y <- evaluate (Standard m) b
+                                                               evaluate (Standard m) (Cons x y)
   evaluate (Standard m) (Label l)                         = maybe (Right $ Label l) eSerialize (Map.lookup l m)
   evaluate (Standard m) x                                 = Right x
   

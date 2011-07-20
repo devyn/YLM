@@ -86,5 +86,43 @@ readerTests =
              ,elemReadWhitespace
              ,elemReadLookupFunction]
 
+evalIdentity =
+  TestCase $ assertEqual "Evaluates identity function (id 1) => 1"
+               (Right $ NumInt 1)
+               (ylmRead standardLib "(id 1)" >>= evaluate standardLib . head)
+
+evalLambda =
+  TestCase $ assertEqual "Evaluates lambda expression (-> (a b) a) properly"
+               (Right $ Label "yes")
+               (ylmRead standardLib "((-> (a b) a) 'yes 'no)" >>= evaluate standardLib . head)
+
+evalLabel =
+  TestCase $ assertEqual "Returns serialization when given a defined label"
+               (ylmRead standardLib "(-> (x) x)" >>= return . head)
+               (ylmRead standardLib "id" >>= evaluate standardLib . head)
+
+evalGenCons =
+  TestCase $ assertEqual "Applies list expanded as arguments when cons'd in"
+               (ylmRead standardLib "(yes yes)" >>= return . head)
+               (ylmRead standardLib "((-> (a b) '(yes yes)) . '(ha ha))"
+                >>= evaluate standardLib . head)
+
+evalUnknownNoTouch =
+  TestCase $ assertEqual "Evaluator won't touch argument if it doesn't know what it is"
+               (ylmRead standardLib "(haha haha haha)" >>= return . head)
+               (ylmRead standardLib "(haha haha haha)" >>= evaluate standardLib . head)
+
+evaluatorTests =
+  TestLabel "Standard Evaluator" $
+    TestList [evalIdentity
+             ,evalLambda
+             ,evalLabel
+             ,evalGenCons
+             ,evalUnknownNoTouch]
+
 main =
-  runTestTT $ TestList [readerTests]
+  do v <- runTestTT $ TestList [readerTests
+                               ,evaluatorTests]
+     if errors v + failures v > 0
+       then fail "Some tests failed."
+       else return ()
