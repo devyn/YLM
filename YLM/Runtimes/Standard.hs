@@ -22,7 +22,7 @@ instance Runtime Standard where
   evaluate (Standard m) (Cons fn@(Cons (Label "->") x) d) = sapl fn (m,d)
   evaluate (Standard m) (Cons a b)                        = do x <- evaluate (Standard m) a
                                                                evaluate (Standard m) (Cons x b)
-  evaluate (Standard m) (Label l)                         = maybe (Right $ Label l) (Right . eSerialize) (Map.lookup l m)
+  evaluate (Standard m) (Label l)                         = maybe (Right $ Label l) eSerialize (Map.lookup l m)
   evaluate (Standard m) x                                 = Right x
   
   execute (Standard m) (i:es) = f (Standard m) i
@@ -74,11 +74,11 @@ standardLib = Standard $ Map.fromList
                                                        , eApply     = (\(m,x)->Right $ Cons (Label "->") x)
                                                        , eExecute   = wrapE $ (\(m,x)->Right $ Cons (Label "->") x) })
                            ,("true",     StandardEntry { eSerialize = sTrue
-                                                       , eApply     = sapl  sTrue
-                                                       , eExecute   = sexec sTrue })
+                                                       , eApply     = sapl  (either (const Nil) id sTrue)
+                                                       , eExecute   = sexec (either (const Nil) id sTrue) })
                            ,("false",    StandardEntry { eSerialize = sFalse
-                                                       , eApply     = sapl  sFalse
-                                                       , eExecute   = sexec sFalse })
+                                                       , eApply     = sapl  (either (const Nil) id sTrue)
+                                                       , eExecute   = sexec (either (const Nil) id sTrue) })
                            ,("read",     StandardEntry { eSerialize = szNat "read"
                                                        , eApply     = aRead
                                                        , eExecute   = wrapE $ aRead })
@@ -89,8 +89,8 @@ standardLib = Standard $ Map.fromList
                                                        , eApply     = aBind
                                                        , eExecute   = eBind })
                            ,("id",       StandardEntry { eSerialize = sId
-                                                       , eApply     = sapl  sId
-                                                       , eExecute   = sexec sId })
+                                                       , eApply     = sapl  (either (const Nil) id sId)
+                                                       , eExecute   = sexec (either (const Nil) id sId) })
                            ,("list",     StandardEntry { eSerialize = szNat "list" {- may be serializable in the future -}
                                                        , eApply     = aList
                                                        , eExecute   = wrapE $ aList })
@@ -132,7 +132,7 @@ aError (m, _)                  = Left "type mismatch (expected: label)"
 
 aDef (m, x) = Right $ Cons (Label "def") x
 
-eDef (m, Cons (Label l) (Cons x Nil)) = return $ either Left (\ v -> Right (Map.insert l v m, Label l)) (sdefent m x)
+eDef (m, Cons (Label l) (Cons x Nil)) = return $ Right (Map.insert l (sdefent m x) m, Label l)
 
 aAdd                = mathematical (+) (+)    (NumInt 0)
 
@@ -147,9 +147,9 @@ aDiv (m, Nil)       = Right $ NumInt 1
 aExp (m,(Cons c d)) = mathematicalr (flip (**)) (flip (^)) c (m,d)
 aExp (m,Nil)        = Right $ NumInt 1
 
-sTrue  = ltc [Label "->", ltc [Label "a", Label "b"], Label "a"]
+sTrue  = Right $ ltc [Label "->", ltc [Label "a", Label "b"], Label "a"]
 
-sFalse = ltc [Label "->", ltc [Label "a", Label "b"], Label "b"]
+sFalse = Right $ ltc [Label "->", ltc [Label "a", Label "b"], Label "b"]
 
 aRead (m, (Cons (Label l) Nil)) =
   case ylmRead (Standard m) l of
@@ -175,11 +175,11 @@ aBind (m, x) = Right $ Cons (Label "bind") x
 eBind (m, (Cons (Label v) (Cons e xs))) =
   do va <- (execute (Standard m) [e]) 
      flip (either $ return . Left) va $ \ (Standard nm, r) ->
-       do vb <- either (return . Left) (\ vl -> execute (Standard (Map.insert v vl nm)) $ ctl xs) (sdefent nm r)
+       do vb <- execute (Standard (Map.insert v (sdefent nm r) nm)) $ ctl xs
           flip (either $ return . Left) vb $ \ (Standard m', x') ->
             return $ Right (m, x')
 
-sId = ltc [Label "->", ltc [Label "x"], Label "x"]
+sId = Right $ ltc [Label "->", ltc [Label "x"], Label "x"]
 
 aList (m, x) = case find cond lt of
                  Just e  -> e
@@ -208,40 +208,48 @@ aTail (m, (Cons l Nil)) = case evaluate (Standard m) l of
                  Left  err        -> Left  err
 aTail (m, _) = Left "expected 1 argument of type list"
 
+aEq :: (Map String StandardEntry, Elem) -> Either String Elem
+
 aEq (m, l@(Cons _ (Cons _ _))) = Right $ tBool (all (\ (a, b) -> a == b) ((,) <$> ev <*> ev))
   where ev = map t (filter c (map (evaluate (Standard m)) $ ctl l))
         t (Right x) = x
         c (Right x) = True
         c (Left  x) = False
-        tBool True  = sTrue
-        tBool False = sFalse
-aEq (m, l@(Cons _ Nil))        = Right sTrue
-aEq (m, Nil)                   = Right sFalse
+        tBool True  = either (const Nil) id sTrue
+        tBool False = either (const Nil) id sFalse
+aEq (m, l@(Cons _ Nil))        = sTrue
+aEq (m, Nil)                   = sFalse
 aEq (m, _)                     = Left "expected arguments"
 
-szNat s = Cons (Label "native") (Cons (Label s) Nil)
+szNat s = Right $ Cons (Label "native") (Cons (Label s) Nil)
 
 wrapE f (m, x) = either (return . Left) (\ a -> return $ Right (m, a)) $ f (m, x)
 
+sfun :: [Elem] -> Elem -> (Map String StandardEntry, Elem) -> Either String Elem
+
 sfun args body (m, x) = if length args == length ia
-                          then either Left (\ v -> evaluate (Standard $ Map.union v m) body) bv
+                          then evaluate (Standard $ Map.union bv m) body
                           else Left ("expected " ++ show (length args)
                                                            ++ " argument(s), got " ++ show (length ia))
   where ia = ctl x
-        bv = either Left (\ v -> Right $ Map.fromList $ zip (map (\ (Label l) -> l) args) v) (mapM (sdefent m) ia)
+        bv = Map.fromList $ zip (map (\ (Label l) -> l) args) (map (sdefent m) ia)
 
-sdefent :: Map String StandardEntry -> Elem -> Either String StandardEntry
+sdefent :: Map String StandardEntry -> Elem -> StandardEntry
 
-sdefent m x = either Left (\ ex -> Right $ StandardEntry { eSerialize = ex
-                                                         , eApply     = sapl ex
-                                                         , eExecute   = sexec ex }) lx
+sdefent m x = StandardEntry { eSerialize = lx
+                            , eApply     = \ t -> either Left (\ d -> sapl d t) lx
+                            , eExecute   = \ t -> either (return . Left) (\ d -> sexec d t) lx }
   where lx = evaluate (Standard m) x
+
+sapl :: Elem -> (Map String StandardEntry, Elem) -> Either String Elem
 
 sapl fb@(Cons (Label "->")
               (Cons ar (Cons fn Nil))) (m,x) = sfun (ctl ar) fn (m,x)
 sapl b (m,x)  = Left $ "type mismatch: (" ++
                           either (const "!write-error") id (ylmWrite standardLib [b]) ++
                           " is not a callable form)"
+
+sexec :: Elem -> (Map String StandardEntry, Elem) -> IO (Either String (Map String StandardEntry, Elem))
 
 sexec b (m,a) = return $ either Left (\ v -> Right (m,v)) (sapl b (m,a))
 
@@ -257,7 +265,7 @@ mathematical :: (Double  -> Double  -> Double )
              -> (Map String StandardEntry, Elem)
              -> Either String Elem
 
-mathematical ff fi ss (m,a) = foldlM f ss (ctl a)
+mathematical ff fi ss (m,a) = either Left (\ s -> foldlM f s (ctl a)) (evaluate (Standard m) ss)
   where f s e = let ee = evaluate (Standard m) e
                 in case (s,ee) of
                   (NumInt   si, Right (NumInt   ni)) -> Right $ NumInt   $ si `fi` ni
@@ -273,7 +281,7 @@ mathematicalr :: (Double  -> Double  -> Double )
               -> (Map String StandardEntry, Elem)
               -> Either String Elem
 
-mathematicalr ff fi ss (m,a) = foldrM f ss (ctl a)
+mathematicalr ff fi ss (m,a) = either Left (\ s -> foldrM f s (ctl a)) (evaluate (Standard m) ss)
   where f s e = let ee = evaluate (Standard m) e
                 in case (s,ee) of
                   (NumInt   si, Right (NumInt   ni)) -> Right $ NumInt   $ si `fi` ni

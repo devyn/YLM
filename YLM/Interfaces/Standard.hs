@@ -14,7 +14,7 @@ import Data.List (find)
 data Standard = Standard (Map String StandardEntry)
 
 data StandardEntry = StandardEntry {
-  eSerialize :: Elem,
+  eSerialize :: Either String Elem,
   eApply     :: (Map String StandardEntry, Elem) -> Either String Elem,
   eExecute   :: (Map String StandardEntry, Elem) -> IO (Either String (Map String StandardEntry, Elem))
 }
