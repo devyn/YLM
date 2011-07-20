@@ -18,6 +18,7 @@ repl r = do
       case ylmRead r s of
         Left err -> do
           putStrLn $ "\ESC[1m" ++ (show r) ++ "!> \ESC[0;31mERROR: " ++ err ++ "\ESC[0m"
+          hFlush stdout
           repl r
         Right ie ->
           case ie of
@@ -27,12 +28,15 @@ repl r = do
               case mre of
                 Left err -> do
                   putStrLn $ "\ESC[1m" ++ (show r) ++ "!> \ESC[0;31mERROR: " ++ err ++ "\ESC[0m"
+                  hFlush stdout
                   repl r
                 Right (nr, re) ->
                   case ylmPrettyPrint nr (length (show nr) + 3) [re] of
                     Left err -> do
                       putStrLn $ "\ESC[1m" ++ (show r) ++ "!> \ESC[0;31mERROR: " ++ err ++ "\ESC[0m"
+                      hFlush stdout
                       repl r
                     Right os -> do
                       putStrLn $ "\ESC[1m" ++ (show nr) ++ "=>\ESC[0m " ++ os
+                      hFlush stdout
                       repl nr
