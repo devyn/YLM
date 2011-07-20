@@ -10,6 +10,7 @@ import Data.Maybe
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.List (find)
+import Data.Char
 
 data Standard = Standard (Map String StandardEntry)
 
@@ -25,11 +26,11 @@ instance Show Standard where
 instance TextInterface Standard where
   ylmRead (Standard _) [] = Right []
   ylmRead (Standard _) text =
-    case parse (optional whitespace *>
-                elem `sepBy` optional whitespace
-                <* optional whitespace <* eof) "" text of
+    case parse (elem `sepBy` optional whitespace <* eof) "" (trim text) of
       Left  err -> Left (show err)
       Right ell -> Right ell
+    where trim  = trimf . trimf
+          trimf = reverse . dropWhile isSpace
   ylmWrite   (Standard _) []     = Right $ ""
   ylmWrite   (Standard _) (e:[]) = Right $ putStandard e
   ylmWrite r@(Standard _) (e:es) = either Left (\x -> Right $ (putStandard e) ++ "\n" ++ x) $ ylmWrite r es
@@ -124,7 +125,7 @@ float = (\ a b c d ->
 
 label = Label <$> f
   where f = try (char '"' *> many (noneOf "\"\\" <|> escapeCode) <* char '"')
-            <|> many1 (noneOf " ()'\"")
+            <|> many1 (noneOf " \t\r\n()'\"")
 
 escapeCode = (\ c -> maybe '\0' snd $ find ((== c).fst) (zip "\"\\rn0abftve" "\"\\\r\n\0\a\b\f\t\v\ESC")) <$> (char '\\' *> oneOf "\"\\rn0abftve")
 
