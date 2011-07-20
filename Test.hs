@@ -73,14 +73,18 @@ elemReadLookupFunction =
                (ylmRead (Standard Map.empty)
                 "(def lookup (-> (table name) ((= table '()) (error \"not found\") ((= (head (head table)) name) (tail (head table)) (lookup (tail table) name)))))")
 
+readerTests =
+  TestLabel "Standard Reader" $
+    TestList [elemReadEmptyStringZero
+             ,elemReadSingleLabel
+             ,elemReadMultiLists
+             ,elemReadAssocList
+             ,elemReadQuote
+             ,elemReadQuotedQuote
+             ,elemReadMathExpr
+             ,elemReadEscapeCode
+             ,elemReadWhitespace
+             ,elemReadLookupFunction]
+
 main =
-  runTestTT $ TestList [elemReadEmptyStringZero
-                       ,elemReadSingleLabel
-                       ,elemReadMultiLists
-                       ,elemReadAssocList
-                       ,elemReadQuote
-                       ,elemReadQuotedQuote
-                       ,elemReadMathExpr
-                       ,elemReadEscapeCode
-                       ,elemReadWhitespace
-                       ,elemReadLookupFunction]
+  runTestTT $ TestList [readerTests]
