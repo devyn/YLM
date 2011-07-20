@@ -55,6 +55,9 @@ standardLib = Standard $ Map.fromList
                            ,("def",      StandardEntry { eSerialize = szNat "def"
                                                        , eApply     = aDef
                                                        , eExecute   = eDef })
+                           ,("undef",    StandardEntry { eSerialize = szNat "undef"
+                                                       , eApply     = aUndef
+                                                       , eExecute   = eUndef })
                            ,("+",        StandardEntry { eSerialize = szNat "+"
                                                        , eApply     = aAdd
                                                        , eExecute   = wrapE $ aAdd })
@@ -133,6 +136,10 @@ aError (m, _)                  = Left "type mismatch (expected: label)"
 aDef (m, x) = Right $ Cons (Label "def") x
 
 eDef (m, Cons (Label l) (Cons x Nil)) = return $ Right (Map.insert l (sdefent m x) m, Label l)
+
+aUndef (m, x) = Right $ Cons (Label "undef") x
+
+eUndef (m, Cons (Label l) Nil) = return $ Right (Map.delete l m, Label l)
 
 aAdd                = mathematical (+) (+)    (NumInt 0)
 
