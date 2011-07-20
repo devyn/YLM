@@ -17,7 +17,7 @@ repl r = do
       addHistory s
       case ylmRead r s of
         Left err -> do
-          putStrLn $ "\ESC[1m" ++ (show r) ++ "!> \ESC[0;31mERROR: " ++ err ++ "\ESC[0m"
+          putStrLn $ " \ESC[0;31mERROR: " ++ err ++ "\ESC[0m"
           hFlush stdout
           repl r
         Right ie ->
@@ -27,16 +27,16 @@ repl r = do
               mre <- execute r ie
               case mre of
                 Left err -> do
-                  putStrLn $ "\ESC[1m" ++ (show r) ++ "!> \ESC[0;31mERROR: " ++ err ++ "\ESC[0m"
+                  putStrLn $ " \ESC[0;31mERROR: " ++ err ++ "\ESC[0m"
                   hFlush stdout
                   repl r
                 Right (nr, re) ->
-                  case ylmPrettyPrint nr (length (show nr) + 3) [re] of
+                  case ylmPrettyPrint nr 1 [re] of
                     Left err -> do
-                      putStrLn $ "\ESC[1m" ++ (show r) ++ "!> \ESC[0;31mERROR: " ++ err ++ "\ESC[0m"
+                      putStrLn $ " \ESC[0;31mERROR: " ++ err ++ "\ESC[0m"
                       hFlush stdout
                       repl r
                     Right os -> do
-                      putStrLn $ "\ESC[1m" ++ (show nr) ++ "=>\ESC[0m " ++ os
+                      putStrLn $ " " ++ os
                       hFlush stdout
                       repl nr
