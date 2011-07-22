@@ -81,8 +81,8 @@ standardLib = Standard $ Map.fromList
                                                        , eApply     = sapl  (either (const Nil) id sTrue)
                                                        , eExecute   = sexec (either (const Nil) id sTrue) })
                            ,("false",    StandardEntry { eSerialize = sFalse
-                                                       , eApply     = sapl  (either (const Nil) id sTrue)
-                                                       , eExecute   = sexec (either (const Nil) id sTrue) })
+                                                       , eApply     = sapl  (either (const Nil) id sFalse)
+                                                       , eExecute   = sexec (either (const Nil) id sFalse) })
                            ,("read",     StandardEntry { eSerialize = szNat "read"
                                                        , eApply     = aRead
                                                        , eExecute   = wrapE $ aRead })
@@ -152,7 +152,7 @@ aMul                = mathematical (*) (*)    (NumInt 1)
 aDiv (m, Cons c d)  = mathematical (/) (quot) c (m, d)
 aDiv (m, Nil)       = Right $ NumInt 1
 
-aExp (m,(Cons c d)) = mathematicalr (flip (**)) (flip (^)) c (m,d)
+aExp (m,(Cons c d)) = mathematical (**) (^) c (m,d)
 aExp (m,Nil)        = Right $ NumInt 1
 
 sTrue  = Right $ ltc [Label "->", ltc [Label "a", Label "b"], Label "a"]
