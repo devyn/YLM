@@ -73,6 +73,11 @@ elemReadLookupFunction =
                (ylmRead (Standard Map.empty)
                 "(def lookup (-> (table name) ((= table '()) (error \"not found\") ((= (head (head table)) name) (tail (head table)) (lookup (tail table) name)))))")
 
+elemReadIgnoreComment =
+  TestCase $ assertEqual "Reader ignores comments in the form of ; comment"
+               (Right [Cons (Label "a") Nil])
+               (ylmRead (Standard Map.empty) "; comment\n(a) ; hell")
+
 readerTests =
   TestLabel "Standard Reader" $
     TestList [elemReadEmptyStringZero
@@ -84,7 +89,8 @@ readerTests =
              ,elemReadMathExpr
              ,elemReadEscapeCode
              ,elemReadWhitespace
-             ,elemReadLookupFunction]
+             ,elemReadLookupFunction
+             ,elemReadIgnoreComment]
 
 evalIdentity =
   TestCase $ assertEqual "Evaluates identity function (id 1) => 1."
