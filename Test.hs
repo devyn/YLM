@@ -213,6 +213,17 @@ evalEquivalence =
                (ylmRead standardLib "(list ((= 132 132 132) 'yes 'no) ((= 132 123 'a) 'yes 'no))"
                 >>= evaluate standardLib . head)
 
+evalLetOne =
+  TestCase $ assertEqual "Evaluator can bind a name to a pure value within an expression using (let)."
+               (Right $ NumInt 4)
+               (ylmRead standardLib "(let (n . (* 1 3)) (+ n 1))" >>= evaluate standardLib . head)
+
+evalLetMultiple =
+  TestCase $ assertEqual "Evaluator can bind multiple names to multiple pure values in an expression using (let)."
+               (Right $ NumInt 10)
+               (ylmRead standardLib "(let ((n1 . (* 2 2)) (n2 . 6)) (+ n1 n2))"
+                >>= evaluate standardLib . head)
+
 evaluatorTests =
   TestLabel "Standard Evaluator" $
     TestList [evalIdentity
@@ -239,7 +250,9 @@ evaluatorTests =
              ,evalCons
              ,evalHead
              ,evalTail
-             ,evalEquivalence]
+             ,evalEquivalence
+             ,evalLetOne
+             ,evalLetMultiple]
 
 execFallback =
   TestCase $ do v <- run standardLib "(+ 1 2)"
@@ -261,16 +274,10 @@ execUndef =
 
 -- TODO: use an IO function
 execBind =
-  TestCase $ do v <- run standardLib "(bind res (+ 2 3) (- res 1))"
+  TestCase $ do v <- run standardLib "(bind res (+ 2 3)) (- res 1)"
                 (flip . either) (const $ assertFailure n) v $ \ (Standard m,a) ->
                   assertEqual n a (NumInt 4)
-  where n = "(bind) is able to bind a name to a value temporarily, with IO."
-
-execBindDoesntAffectGlobalState =
-  TestCase $ do v <- run standardLib "(bind res (+ 2 3) (- res 1))"
-                (flip . either) (const $ assertFailure n) v $ \ (Standard m,a) ->
-                  assertBool n (not $ Map.member "res" m)
-  where n = "Executing (bind) doesn't affect the global state."
+  where n = "(bind) is able to bind a name to an IO value."
 
 execMultipleStatements =
   TestCase $ do v <- run standardLib "(+ 1 2) (+ 3 4)"
@@ -284,7 +291,6 @@ executorTests =
              ,execDefine
              ,execUndef
              ,execBind
-             ,execBindDoesntAffectGlobalState
              ,execMultipleStatements]
 
 main =

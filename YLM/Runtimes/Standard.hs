@@ -92,6 +92,9 @@ standardLib = Standard $ Map.fromList
                            ,("bind",     StandardEntry { eSerialize = szNat "bind"
                                                        , eApply     = aBind
                                                        , eExecute   = eBind })
+                           ,("let",      StandardEntry { eSerialize = szNat "let"
+                                                       , eApply     = aLet
+                                                       , eExecute   = wrapE $ aLet })
                            ,("id",       StandardEntry { eSerialize = sId
                                                        , eApply     = sapl  (either (const Nil) id sId)
                                                        , eExecute   = sexec (either (const Nil) id sId) })
@@ -180,12 +183,30 @@ aWrite (m, xs) =
 
 aBind (m, x) = Right $ Cons (Label "bind") x
 
-eBind (m, (Cons (Label v) (Cons e xs))) =
-  do va <- (execute (Standard m) [e]) 
-     flip (either $ return . Left) va $ \ (Standard nm, r) ->
-       do vb <- execute (Standard (Map.insert v (sdefent nm r) nm)) $ ctl xs
-          flip (either $ return . Left) vb $ \ (Standard m', x') ->
-            return $ Right (m, x')
+eBind (m, (Cons (Label var) (Cons val Nil))) =
+  do val' <- execute (Standard m) [val]
+     (flip . either) (return . Left) val' $ \ (Standard m', y') ->
+       return $ Right (Map.insert var (sdefent m' y') m', y')
+
+eBind (m, _) =
+  return $ Left $ "expected 2 arguments (name io-action)"
+
+aLet (m, (Cons (Cons (Label x) y) (Cons e Nil))) =
+  do y' <- evaluate (Standard m) y
+     evaluate (Standard $ Map.insert x (sdefent m y') m) e
+
+aLet (m, (Cons l@(Cons (Cons _ _) _) (Cons e Nil))) =
+  do let ll = ctl l 
+     l' <- foldlM (\ defs (Cons x y) -> case x of
+                                          Label x' ->
+                                            let m' = (Map.union (Map.fromList defs) m)
+                                            in evaluate (Standard m') y >>= \ y' -> return $ (x',sdefent m' y'):defs
+                                          _ -> ylmWrite (Standard m) [x] >>= (\ w -> Left $ "(let): " ++ w ++ " is not a label.")) [] ll
+     evaluate (Standard (Map.union (Map.fromList l') m)) e
+
+aLet (m, a) =
+  Left $ "expected 2 arguments, the first of type list with form (var . val) or ((var1 . val1) (var2 . val2) ...), but got "
+         ++ (show $ length $ ctl a) ++ " arguments."
 
 sId = Right $ ltc [Label "->", ltc [Label "x"], Label "x"]
 
@@ -262,7 +283,8 @@ sexec :: Elem -> (Map String StandardEntry, Elem) -> IO (Either String (Map Stri
 sexec b (m,a) = return $ either Left (\ v -> Right (m,v)) (sapl b (m,a))
 
 ctl Nil = []
-ctl (Cons h t) = h : ctl t
+ctl (Cons h t@(Cons _ _)) = h : ctl t
+ctl (Cons h t@Nil) = [h]
 
 ltc [] = Nil
 ltc (h:t) = Cons h (ltc t)
