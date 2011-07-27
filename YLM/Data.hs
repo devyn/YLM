@@ -1,0 +1,73 @@
+module YLM.Data (
+  Elem(..),
+  Argument(..),
+  Scope,
+  TextInterface(..),
+  PrettyPrint(..),
+) where
+
+import Data.Map (Map)
+import qualified Data.Map as Map
+import Data.ByteString.Lazy.Char8 (ByteString)
+
+-- Note: The first argument to the Native constructor is the name it can be found by in the Scope
+--       and is also used in comparisons. That way [as an example in Standard] (= put-line put-line)
+--       will still return (-> (a b) a) [which is true].
+
+data Elem = Nil
+          | Cons Elem Elem
+          | Label String
+          | NumInt Integer
+          | NumFloat Double
+          | Lambda Scope [Argument] Elem
+          | Action (IO (Either String (Scope, Elem)))
+          | Opaque String (Scope -> Elem -> Either String Elem)
+
+instance Show Elem where
+  showsPrec d Nil = showString "Nil"
+  showsPrec d (Cons a b) = showParen (d > 10) $
+    showString "Cons " . showsPrec 11 a
+    . showString " " . showsPrec 11 b
+  showsPrec d (Label s) = showParen (d > 10) $
+    showString "Label " . showsPrec 11 s
+  showsPrec d (NumInt i) = showParen (d > 10) $
+    showString "NumInt " . showsPrec 11 i
+  showsPrec d (NumFloat f) = showParen (d > 10) $
+    showString "NumFloat " . showsPrec 11 f
+  showsPrec d (Lambda s as b) = showParen (d > 10) $
+    showString "Lambda <Scope> " . showsPrec 10 as
+    . showString " -> " . showsPrec 10 b
+  showsPrec d (Action _) = showString "<Action>"
+  showsPrec d (Opaque idn _) = showParen (d > 10) $
+    showString "Opaque " . showsPrec 11 idn . showString " (->)"
+
+instance Eq Elem where
+  Nil == Nil = True
+  Cons a b == Cons x y = a == x && b == y
+  Label a == Label b = a == b
+  NumInt a == NumInt b = a == b
+  NumFloat a == NumFloat b = a == b
+  Lambda s1 as1 b1 == Lambda s2 as2 b2 =
+    s1 == s2 && as1 == as2 && b1 == b2
+  Opaque a _ == Opaque b _ = a == b
+  _ == _ = False
+
+data Argument = Required String
+              | Optional String
+              | Rest     String
+              deriving (Show, Eq)
+
+type Scope = Map String Elem
+
+class TextInterface a where
+  yread  :: a                    -- ^ Text interface to use
+         -> String               -- ^ File name
+         -> String               -- ^ Input text
+         -> Either String [Elem] -- ^ Either an error or our result
+
+  ywrite :: a                    -- ^ Text interface to use
+         -> [Elem]               -- ^ Input elements
+         -> String               -- ^ Output written string (writer can't fail)
+
+class PrettyPrint a where
+  ypp :: a -> Scope -> Int -> [Elem] -> String

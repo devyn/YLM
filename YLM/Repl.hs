@@ -1,42 +1,43 @@
-module YLM.Repl (repl) where
+module YLM.Repl (StateDisplay(..), repl) where
 
-import YLM.Elem
-import YLM.TextInterface
+import YLM.Data
 import YLM.Runtime
-import YLM.PrettyPrint
+import Data.Map (Map)
+import qualified Data.Map as Map
 import System.IO
 import System.Console.Readline
-import qualified Control.Exception as E
 
-repl :: (Show a, TextInterface a, Runtime a, PrettyPrint a) => a -> IO ()
-repl r = do
-  ms <- readline $ "\x01\ESC[1m\x02" ++ (show r) ++ ">>\x01\ESC[0m\x02 "
+data (TextInterface i, PrettyPrint i) => StateDisplay i = StateDisplay (i -> Scope -> (String, StateDisplay i))
+
+repl :: (TextInterface i, PrettyPrint i)
+     => i              -- ^ The text interface/pretty printer to use
+     -> Scope          -- ^ The initial scope to seed the interpreter with
+     -> StateDisplay i -- ^ Used to generate the prompt
+     -> IO ()
+
+repl i m (StateDisplay f) = do
+  let (p, f') = f i m
+  ms <- readline $ concat ["\x01\ESC[1m\x02", p, ">>\x01\ESC[0m\x02 "]
   case ms of
-    Nothing -> repl r
+    Nothing -> repl i m f'
     Just s  -> do
       addHistory s
-      case ylmRead r s of
+      case yread i "(interactive)" s of
         Left err -> do
-          putStrLn $ " \ESC[0;31mERROR: " ++ err ++ "\ESC[0m"
+          putStrLn $ concat [" \ESC[0;31mERROR: ", err, "\ESC[0m"]
           hFlush stdout
-          repl r
+          repl i m f'
         Right ie ->
           case ie of
             [Label "quit"] -> return ()
             _ -> do
-              mre <- execute r ie
+              mre <- yexec m ie
               case mre of
                 Left err -> do
-                  putStrLn $ " \ESC[0;31mERROR: " ++ err ++ "\ESC[0m"
+                  putStrLn $ concat [" \ESC[0;31mERROR: ", err, "\ESC[0m"]
                   hFlush stdout
-                  repl r
-                Right (nr, re) ->
-                  case ylmPrettyPrint nr 1 [re] of
-                    Left err -> do
-                      putStrLn $ " \ESC[0;31mERROR: " ++ err ++ "\ESC[0m"
-                      hFlush stdout
-                      repl r
-                    Right os -> do
-                      putStrLn $ " " ++ os
-                      hFlush stdout
-                      repl nr
+                  repl i m f'
+                Right (m', r) ->
+                  do putStrLn $ " " ++ (ypp i m' 1 [r])
+                     hFlush stdout
+                     repl i m' f'
