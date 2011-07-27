@@ -6,8 +6,8 @@ import YLM.Runtime
 import Data.Map (Map)
 import qualified Data.Map as Map
 
--- TODO: +; -; *; /; ^; read; write; bind;
---       let; list; do; load; explode; implode
+-- TODO: +; -; *; /; ^; read; write; bind; or; and; type-of; set-scope; merge-scope;
+--       let; list; do; load; explode; implode; map; left-fold; right-fold; empty; xyzzy
 
 standard =
   Map.fromList [o "->"            oLambda
@@ -52,7 +52,7 @@ oSelf s x   = fallback "0" x
 oDef s (Cons name (Cons value Nil)) = do
   v <- yeval s value
   case name of
-    Label k -> Right $ Action $ return $ Right $ (Map.insert k v s, name)
+    Label k -> Right $ Action $ \ m -> return $ Right $ (Map.insert k v m, name)
     _       -> tpe "label" name
 oDef s x = fallback "2" x
 
@@ -60,7 +60,7 @@ oUndef s (Cons name Nil) =
   case name of
     Label k ->
       if Map.member k s
-         then Right $ Action $ return $ Right $ (Map.delete k s, name)
+         then Right $ Action $ \ m -> return $ Right $ (Map.delete k m, name)
          else err ["`", k, "' is not defined."]
     _ -> tpe "label" name
 oUndef s x = fallback "1" x
@@ -154,14 +154,14 @@ oPutLine s (Cons l Nil) = do
   l' <- yeval s l
   case l' of
     Label str ->
-      Right $ Action $ do
-        putStrLn str 
-        return $ Right (s, Nil)
+      Right $ Action $ \ m -> do
+        putStrLn str
+        return $ Right (m, Nil)
     _ ->
       tpe "label" l'
 oPutLine s x = fallback "1" x
 
-oGetLine s Nil = Right $ Action $ do
+oGetLine s Nil = Right $ Action $ \ m -> do
   ln <- getLine
-  return $ Right (s, Label ln)
+  return $ Right (m, Label ln)
 oGetLine s x = fallback "1" x

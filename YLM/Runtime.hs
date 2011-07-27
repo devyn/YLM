@@ -38,7 +38,7 @@ yexec :: Scope                            -- ^ The scope to evaluate within.
       -> [Elem]                           -- ^ The input to execute.
       -> IO (Either String (Scope, Elem)) -- ^ The IO side-effects, and either an error or the changed state and returned value.
 
-yexec m ((Action a):es) = do ia <- a
+yexec m ((Action a):es) = do ia <- a m
                              (flip (either (return . Left))) ia $ \ (m', _) ->
                                if null es
                                   then return ia
@@ -47,7 +47,7 @@ yexec m ((Action a):es) = do ia <- a
 yexec m (e:es) = do let e' = yeval m e
                     case e' of
                       Right (Action a) -> do
-                        ia <- a
+                        ia <- a m
                         (flip (either (return . Left))) ia $ \ (m', _) ->
                           if null es
                              then return ia

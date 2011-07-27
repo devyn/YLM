@@ -22,7 +22,7 @@ data Elem = Nil
           | NumFloat Double
           | Form Scope String String Elem
           | Lambda Scope [Argument] Elem
-          | Action (IO (Either String (Scope, Elem)))
+          | Action (Scope -> IO (Either String (Scope, Elem)))
           | Opaque String (Scope -> Elem -> Either String Elem)
           | Window Scope
 
