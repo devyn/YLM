@@ -18,12 +18,18 @@ yeval :: Scope              -- ^ The scope to evaluate within.
 
 yeval m (Cons (NumInt _) y)                 = err ["can't call a number!"]
 yeval m (Cons (NumFloat _) y)               = err ["can't call a number!"]
+yeval m (Cons (Window s) (Cons b Nil))      = yeval m b >>= yeval s
+yeval m (Cons (Window s) a@(Label _))       = yeval m a >>= yeval m >>= yeval s
+yeval m c@(Cons (Window s) x)               = fallback "1" x
+yeval m (Cons (Form s a w b) y)             = yeval (Map.fromList [(a,y),(w,Window m)] `Map.union` s) b
 yeval m (Cons (Lambda s as b) y)            = do c <- bindArgs m s as y
                                                  yeval c b
 yeval m (Cons (Opaque _ f) y)               = f m y
+yeval m (Cons x b@(Label _))                = do y <- yeval m b
+                                                 yeval m (Cons x y)
 yeval m (Cons a y)                          = do x <- yeval m a
                                                  yeval m (Cons x y)
-yeval m (Label l)                           = maybe (err [l, " is not defined."])
+yeval m (Label l)                           = maybe (err ["`", l, "' is not defined."])
                                                     Right (Map.lookup l m)
 yeval m (Action _)                          = err ["can't evaluate an impure action from pure code!"]
 yeval m x                                   = Right x
@@ -73,7 +79,7 @@ bindArgs m s ad ai = do eai <- mev m ai
                                either Left (Right . Cons ex) $ mev s ys
         mev s x           = yeval s x
         fov s _ ((Rest n):_) e =
-          Right $ Map.insert n e s
+          yeval m e >>= \ e' -> Right $ Map.insert n e' s
         fov s c (a:as) (Cons x ys) =
           case a of
             Required n -> fov (Map.insert n x s) (c+1) as ys

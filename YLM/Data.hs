@@ -4,6 +4,7 @@ module YLM.Data (
   Scope,
   TextInterface(..),
   PrettyPrint(..),
+  ytype
 ) where
 
 import Data.Map (Map)
@@ -19,9 +20,11 @@ data Elem = Nil
           | Label String
           | NumInt Integer
           | NumFloat Double
+          | Form Scope String String Elem
           | Lambda Scope [Argument] Elem
           | Action (IO (Either String (Scope, Elem)))
           | Opaque String (Scope -> Elem -> Either String Elem)
+          | Window Scope
 
 instance Show Elem where
   showsPrec d Nil = showString "Nil"
@@ -34,12 +37,19 @@ instance Show Elem where
     showString "NumInt " . showsPrec 11 i
   showsPrec d (NumFloat f) = showParen (d > 10) $
     showString "NumFloat " . showsPrec 11 f
+  showsPrec d (Form s a w b) = showParen (d > 10) $
+    showString "Form " . showsPrec 11 s
+    . showString " " . showsPrec 11 a
+    . showString " " . showsPrec 11 w
+    . showString " " . showsPrec 11 b
   showsPrec d (Lambda s as b) = showParen (d > 10) $
     showString "Lambda <Scope> " . showsPrec 10 as
     . showString " -> " . showsPrec 10 b
   showsPrec d (Action _) = showString "<Action>"
   showsPrec d (Opaque idn _) = showParen (d > 10) $
     showString "Opaque " . showsPrec 11 idn . showString " (->)"
+  showsPrec d (Window s) = showParen (d > 10) $
+    showString "Window " . showsPrec 11 s
 
 instance Eq Elem where
   Nil == Nil = True
@@ -47,10 +57,26 @@ instance Eq Elem where
   Label a == Label b = a == b
   NumInt a == NumInt b = a == b
   NumFloat a == NumFloat b = a == b
+  Form s1 a1 w1 b1 == Form s2 a2 w2 b2 =
+    s1 == s2 && a1 == a2 && w1 == w2 && b1 == b2
   Lambda s1 as1 b1 == Lambda s2 as2 b2 =
     s1 == s2 && as1 == as2 && b1 == b2
   Opaque a _ == Opaque b _ = a == b
+  Window a == Window b = a == b
   _ == _ = False
+
+ytype :: Elem -> String
+
+ytype Nil             = "list"
+ytype (Cons _ _)      = "list"
+ytype (Label _)       = "label"
+ytype (NumInt _)      = "number"
+ytype (NumFloat _)    = "number"
+ytype (Form _ _ _ _)  = "function"
+ytype (Lambda _ _ _)  = "function"
+ytype (Opaque _ _)    = "function"
+ytype (Window _)      = "function"
+ytype (Action _)      = "action"
 
 data Argument = Required String
               | Optional String

@@ -9,6 +9,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.List hiding (elem)
 import Data.Foldable (foldlM)
+import Data.Char (isDigit)
 
 data Raw = Raw
 
@@ -26,13 +27,16 @@ putRaw i@(Cons _ _)                                 = concat ["(", f i, ")"]
 putRaw (Label s)
   | null s                                          = "\"\""
   | s == "."                                        = "\".\""
+  | all isDigit s                                   = '\"' : fmtEscape s ++ "\""
   | any (\x -> any (== x)
                " ()'\"\r\n\0\a\b\f\t\v\ESC\';.") s  = '\"' : fmtEscape s ++ "\""
   | otherwise                                       = s
 putRaw (NumInt n)                                   = show n
 putRaw (NumFloat n)                                 = show n
+putRaw (Form s a w b)                               = putRaw $ Cons (Label "form") (Cons (Label a) (Cons (Label w) (Cons b Nil)))
 putRaw (Lambda s as b)                              = putRaw $ Cons (Label "->") (Cons (atr as) (Cons b Nil))
 putRaw (Action _)                                   = "!impure-action!"
+putRaw (Window _)                                   = "!window!"
 putRaw (Opaque idn _)                               = concat ["(opaque ", putRaw (Label idn), ")"]
 
 fmtEscape (c : s) = (maybe [c] (('\\':).(: []).snd)
@@ -65,6 +69,7 @@ prettyRaw m o i@(Cons a b)                  = case a of
 prettyRaw m o (Label s)
   | null s                                      = concat ["\ESC[1;", c, "m\"\"\ESC[0m"]
   | s == "."                                    = concat ["\ESC[", c, "m\".\"\ESC[0m"]
+  | all isDigit s                               = concat ["\ESC[", c, "m\"", fmtPrettyEscape c s, "\"\ESC[0m"]
   | any (\x -> any (== x)
                " ()'\"\r\n\0\a\b\f\t\v\ESC;") s = concat ["\ESC[", c, "m\"", fmtPrettyEscape c s, "\"\ESC[0m"]
   | otherwise                                   = concat ["\ESC[1;", c, "m", s, "\ESC[0m"]
@@ -79,10 +84,19 @@ prettyRaw m o (NumFloat n)            = concat ["\ESC[36m", show n, "\ESC[0m"]
 prettyRaw m o (Lambda s as b)         = if length sf > 100
                                            then lf
                                            else sf
-  where sf = concat ["(\ESC[1;35m->\ESC[0m ", prettyRaw s (o+4) (atr as), " ", prettyRaw s o b, ")"]
+  where sf = concat ["(\ESC[1;35m->\ESC[0m ", prettyRaw s (o+4) (atr as), " ", prettyRaw s (o+4) b, ")"]
         lf = concat ["(\ESC[1;35m->\ESC[0m ", prettyRaw s (o+4) (atr as), "\n"
                     ,take (o+4) $ repeat ' ', prettyRaw s (o+4) b, ")"]
+prettyRaw m o (Form s a w b)          = if length sf > 100
+                                           then lf
+                                           else sf
+  where sf = concat ["(\ESC[1;35mform\ESC[0m ", prettyRaw s (o+6) (Label a), " "
+                    ,prettyRaw s (o+6) (Label w), " ", prettyRaw s (o+6) b, ")"]
+        lf = concat ["(\ESC[1;35mform\ESC[0m ", prettyRaw s (o+6) (Label a), idt
+                    ,prettyRaw s (o+6) (Label w), idt, prettyRaw s (o+6) b, ")"]
+        idt = '\n' : take (o+6) (repeat ' ')
 prettyRaw m o (Action _)              = prettyRaw m o (Label "!impure-action!")
+prettyRaw m o (Window _)              = prettyRaw m o (Label "!window!")
 prettyRaw m o (Opaque idc _)          = prettyRaw m o (Cons (Label "opaque") (Cons (Label idc) Nil))
 
 fmtPrettyEscape :: String -> String -> String

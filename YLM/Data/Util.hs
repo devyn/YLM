@@ -1,8 +1,9 @@
-module YLM.Data.Util (err, argList, arity, addArity, showArity, sizeCons, isPureList, fallback) where
+module YLM.Data.Util (err, argList, arity, addArity, showArity, sizeCons, isPureList, fallback, tpe, tpem, isCons) where
 
 import YLM.Data
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.List
 
 err :: [[a]] -> Either [a] b
 
@@ -55,5 +56,19 @@ isPureList _           = False
 fallback :: String -> Elem -> Either String Elem
 
 fallback n x
-  | isPureList x = err ["wrong number of arguments (expected ", n, " argument(s), got ", show $ sizeCons x, " arguments)."]
-  | otherwise    = err ["can't cons this type of argument to this function!"]
+  | isPureList x = err ["wrong number of arguments (expected ", n, " argument(s), got ", show $ sizeCons x, ")."]
+  | otherwise    = err ["can't cons that to this type of function!"]
+
+tpe :: String -> Elem -> Either String Elem
+
+tpe ex g = err ["type error (expected ", ex, ", but got ", ytype g, ")."]
+
+tpem :: String -> [Elem] -> Either String Elem
+
+tpem ex gs = err ["type error (expected ", ex, ", but got [", intercalate ", " (map ytype gs), "])."]
+
+isCons :: Elem -> Bool
+
+isCons Nil        = True
+isCons (Cons _ _) = True
+isCons _          = False
