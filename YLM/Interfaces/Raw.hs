@@ -9,7 +9,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.List hiding (elem)
 import Data.Foldable (foldlM)
-import Data.Char (isDigit)
+import Data.Char (isDigit, isSpace)
 
 data Raw = Raw
 
@@ -20,25 +20,25 @@ instance TextInterface Raw where
       Right ell -> Right ell
   ywrite Raw es = intercalate "\n" $ map putRaw es
 
-putRaw Nil                                          = "()"
-putRaw i@(Cons _ _)                                 = concat ["(", f i, ")"]
-  where f (Cons a (Cons b c))                       = concat [putRaw a, " ", f (Cons b c)]
-        f (Cons a Nil)                              = putRaw a
-        f (Cons a b)                                = concat [putRaw a, " . ", putRaw b]
+putRaw Nil                                         = "()"
+putRaw i@(Cons _ _)                                = concat ["(", f i, ")"]
+  where f (Cons a (Cons b c))                      = concat [putRaw a, " ", f (Cons b c)]
+        f (Cons a Nil)                             = putRaw a
+        f (Cons a b)                               = concat [putRaw a, " . ", putRaw b]
 putRaw (Label s)
-  | null s                                          = "\"\""
-  | s == "."                                        = "\".\""
-  | all isDigit s                                   = '\"' : fmtEscape s ++ "\""
+  | null s                                         = "\"\""
+  | s == "."                                       = "\".\""
+  | isYNum s                                       = '\"' : fmtEscape s ++ "\""
   | any (\x -> any (== x)
-               " ()'\"\r\n\0\a\b\f\t\v\ESC\';.") s  = '\"' : fmtEscape s ++ "\""
-  | otherwise                                       = s
-putRaw (NumInt n)                                   = show n
-putRaw (NumFloat n)                                 = show n
-putRaw (Form s a w b)                               = putRaw $ Cons (Label "form") (Cons (Label a) (Cons (Label w) (Cons b Nil)))
-putRaw (Lambda s as b)                              = putRaw $ Cons (Label "->") (Cons (atr as) (Cons b Nil))
-putRaw (Action _)                                   = "!impure-action!"
-putRaw (Window _)                                   = "!window!"
-putRaw (Opaque idn _)                               = concat ["(opaque ", putRaw (Label idn), ")"]
+               " ()'\"\r\n\0\a\b\f\t\v\ESC\';") s  = '\"' : fmtEscape s ++ "\""
+  | otherwise                                      = s
+putRaw (NumInt n)                                  = show n
+putRaw (NumFloat n)                                = show n
+putRaw (Form s a w b)                              = putRaw $ Cons (Label "form") (Cons (Label a) (Cons (Label w) (Cons b Nil)))
+putRaw (Lambda s as b)                             = putRaw $ Cons (Label "->") (Cons (atr as) (Cons b Nil))
+putRaw (Action _)                                  = "!impure-action!"
+putRaw (Window _)                                  = "!window!"
+putRaw (Opaque idn _)                              = concat ["(opaque ", putRaw (Label idn), ")"]
 
 fmtEscape (c : s) = (maybe [c] (('\\':).(: []).snd)
                      $ find ((== c).fst) (zip "\"\\\r\n\0\a\b\f\t\v\ESC\'" "\"\\rn0abftve'")) ++ fmtEscape s
@@ -70,7 +70,7 @@ prettyRaw m o i@(Cons a b)                  = case a of
 prettyRaw m o (Label s)
   | null s                                      = concat ["\ESC[1;", c, "m\"\"\ESC[0m"]
   | s == "."                                    = concat ["\ESC[", c, "m\".\"\ESC[0m"]
-  | all isDigit s                               = concat ["\ESC[", c, "m\"", fmtPrettyEscape c s, "\"\ESC[0m"]
+  | isYNum s                                    = concat ["\ESC[", c, "m\"", fmtPrettyEscape c s, "\"\ESC[0m"]
   | any (\x -> any (== x)
                " ()'\"\r\n\0\a\b\f\t\v\ESC;") s = concat ["\ESC[", c, "m\"", fmtPrettyEscape c s, "\"\ESC[0m"]
   | otherwise                                   = concat ["\ESC[1;", c, "m", s, "\ESC[0m"]
@@ -163,3 +163,10 @@ whitespace = many1 $ comment <|> many1 (oneOf " \t\r\n")
 comment = char ';' *> many (noneOf "\n") <* (eof <|> (char '\n' *> pure ()))
 
 many2 p = (:) <$> p <*> many1 p
+
+isYNum :: String -> Bool
+
+isYNum s = case parse num "" (trim s) of
+             Right _ -> True
+             Left  _ -> False
+  where trim = let f = reverse . dropWhile isSpace in f . f
