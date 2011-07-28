@@ -35,7 +35,8 @@ standard =
                ,o "tail"          oTail
                ,o "null?"         oNullQ
                ,o "put-line"      oPutLine
-               ,o "get-line"      oGetLine]
+               ,o "get-line"      oGetLine
+               ,t "xyzzy"         tXyzzy]
   where o n f = (n, Right $ Opaque n f)
         t n v = (n, Right $ v)
         e n x = (n, Left  $ x)
@@ -183,3 +184,6 @@ oGetLine s Nil = Right $ Action $ \ m -> do
   ln <- getLine
   return $ Right (m, Label ln)
 oGetLine s x = fallback "1" x
+
+tXyzzy = Action $ \ m -> do putStrLn "\ESC[34m ~ Nothing happens.\ESC[0m"
+                            return $ Right (m, Nil)
