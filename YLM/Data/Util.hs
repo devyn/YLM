@@ -1,4 +1,4 @@
-module YLM.Data.Util (err, argList, arity, addArity, showArity, sizeCons, isPureList, fallback, tpe, tpem, isCons, lcons) where
+module YLM.Data.Util (err, argList, arity, addArity, showArity, sizeCons, isPureList, fallback, tpe, tpem, isCons, lcons, clist) where
 
 import YLM.Data
 import Data.Map (Map)
@@ -76,3 +76,8 @@ isCons _          = False
 lcons :: [Elem] -> Elem
 lcons (x:xs) = Cons x (lcons xs)
 lcons []     = Nil
+
+clist :: Elem -> [Elem]
+clist (Cons x xs) = x : clist xs
+clist Nil         = []
+clist _           = error "tried to clist a dirty list or other value"

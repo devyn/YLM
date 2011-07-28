@@ -6,14 +6,15 @@ import YLM.Runtime
 import Data.Map (Map)
 import qualified Data.Map as Map
 
--- TODO: +; -; *; /; ^; read; write; bind; set-scope; concat; let; list;
---       do; load; explode; map; left-fold; right-fold; empty; xyzzy
+-- TODO: +; -; *; /; ^; read; write; set-scope; merge-window; concat;
+--       load; explode; implode; map; left-fold; right-fold; empty
 
 standard =
   Map.fromList [o "->"            oLambda
                ,o "form"          oForm
                ,o "self"          oSelf
                ,o "type-of"       oTypeOf
+               ,o "let"           oLet
                ,o "def"           oDef
                ,o "undef"         oUndef
                ,o "list-defined"  oListDefined
@@ -30,10 +31,13 @@ standard =
                ,o "="             oEq
                ,o "<"             oLessThan
                ,o ">"             oGreaterThan
+               ,o "list"          oList
                ,o "cons"          oCons
                ,o "head"          oHead
                ,o "tail"          oTail
                ,o "null?"         oNullQ
+               ,o "do"            oDo
+               ,o "bind"          oBind
                ,o "put-line"      oPutLine
                ,o "get-line"      oGetLine
                ,t "xyzzy"         tXyzzy]
@@ -57,15 +61,29 @@ oSelf s x   = fallback "0" x
 
 oTypeOf s (Cons x Nil) = do x' <- yeval s x
                             Right $ Label $ ytype x'
-oTypeof s x            = fallback "1" x
+oTypeOf s x            = fallback "1" x
+
+oLet s (Cons (Cons (Label l) v) (Cons e Nil)) =
+  oLet s (Cons (Cons (Cons (Label l) v) Nil) (Cons e Nil))
+oLet s (Cons Nil (Cons e Nil)) =
+  yeval s e
+oLet s (Cons (Cons (Cons l v) xs) (Cons e Nil))
+  | l == v = wcle
+  | otherwise = 
+    case l of
+      Label k -> 
+        let v' = yeval (Map.insert k v' s) v
+        in oLet (Map.insert k v' s) (Cons xs (Cons e Nil))
+      _ -> tpe "label" l
+oLet s x = fallback "2" x
 
 oDef s (Cons name (Cons value Nil))
-  | name == value = Left "I'm afraid I can't let you do that, for fear of the formation of a black hole."
-  | otherwise = do
+  | name == value = wcle
+  | otherwise =
     case name of
-      Label k -> do
+      Label k ->
         let v = yeval (Map.insert k v s) value
-        Right $ Action $ \ m -> return $ Right $ (Map.insert k v m, name)
+        in Right $ Action $ \ m -> return $ Right (Map.insert k v m, name)
       _ -> tpe "label" name
 oDef s x = fallback "2" x
 
@@ -139,6 +157,10 @@ oLessThan s x = fallback "2" x
 oGreaterThan s (Cons a (Cons b Nil)) = oLessThan s (Cons b (Cons a Nil))
 oGreaterThan s x                     = fallback "2" x
 
+oList s x
+  | isPureList x = mapM (yeval s) (clist x) >>= return . lcons
+  | otherwise = fallback "0+" x
+
 oCons s (Cons i (Cons l Nil)) = do
   i' <- yeval s i
   l' <- yeval s l
@@ -169,6 +191,25 @@ oNullQ s (Cons l Nil) = do
       _        -> tpe "list" l'
 oNullQ s x = fallback "1" x
 
+oDo s x
+  | isPureList x = Right $ Action $ \ m ->
+                     do e <- yexec s (clist x)
+                        flip (either $ return . Left) e $
+                          \ (s', r) -> return $ Right (m, r)
+  | otherwise = fallback "0+" x
+
+oBind s (Cons name (Cons avalue Nil))
+  | name == avalue = wcle
+  | otherwise =
+    case name of
+      Label k -> Right $ Action $ \ m -> do
+        e <- yexec s [avalue]
+        case e of
+          Left _       -> return e
+          Right (s',v) -> return $ Right (Map.insert k (Right v) m, name)
+      _ -> tpe "label" name
+oBind s x = fallback "2" x
+
 oPutLine s (Cons l Nil) = do
   l' <- yeval s l
   case l' of
@@ -187,3 +228,6 @@ oGetLine s x = fallback "1" x
 
 tXyzzy = Action $ \ m -> do putStrLn "\ESC[34m ~ Nothing happens.\ESC[0m"
                             return $ Right (m, Nil)
+
+
+wcle = Left "I'm afraid I can't let you do that, for fear of the formation of a black hole."
