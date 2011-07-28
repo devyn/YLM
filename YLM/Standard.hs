@@ -32,8 +32,9 @@ standard =
                ,o "null?"         oNullQ
                ,o "put-line"      oPutLine
                ,o "get-line"      oGetLine]
-  where o n f = (n, Opaque n f)
-        t n v = (n, v)
+  where o n f = (n, Right $ Opaque n f)
+        t n v = (n, Right $ v)
+        e n x = (n, Left  $ x)
 
 oLambda s (Cons as (Cons b Nil)) =
   do al <- argList as
@@ -41,19 +42,22 @@ oLambda s (Cons as (Cons b Nil)) =
 oLambda s _ =
   err ["malformed lambda expression."]
 
-oForm s (Cons (Label a) (Cons (Label w) (Cons b Nil)))
-  = Right $ Form s a w b
-oForm s _
-  = err ["malformed special form expression."]
+oForm s (Cons (Label a) (Cons (Label w) (Cons b Nil))) =
+  Right $ Form s a w b
+oForm s _ =
+  err ["malformed special form expression."]
 
 oSelf s Nil = Right $ Window s
 oSelf s x   = fallback "0" x
 
-oDef s (Cons name (Cons value Nil)) = do
-  v <- yeval s value
-  case name of
-    Label k -> Right $ Action $ \ m -> return $ Right $ (Map.insert k v m, name)
-    _       -> tpe "label" name
+oDef s (Cons name (Cons value Nil))
+  | name == value = Left "I'm afraid I can't let you do that, for fear of the formation of a black hole."
+  | otherwise = do
+    case name of
+      Label k -> do
+        let v = yeval (Map.insert k v s) value
+        Right $ Action $ \ m -> return $ Right $ (Map.insert k v m, name)
+      _ -> tpe "label" name
 oDef s x = fallback "2" x
 
 oUndef s (Cons name Nil) =

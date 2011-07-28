@@ -21,7 +21,7 @@ yeval m (Cons (NumFloat _) y)               = err ["can't call a number!"]
 yeval m (Cons (Window s) (Cons b Nil))      = yeval m b >>= yeval s
 yeval m (Cons (Window s) a@(Label _))       = yeval m a >>= yeval m >>= yeval s
 yeval m c@(Cons (Window s) x)               = fallback "1" x
-yeval m (Cons (Form s a w b) y)             = yeval (Map.fromList [(a,y),(w,Window m)] `Map.union` s) b
+yeval m (Cons (Form s a w b) y)             = yeval (Map.fromList [(a,Right y),(w,Right $ Window m)] `Map.union` s) b
 yeval m (Cons (Lambda s as b) y)            = do c <- bindArgs m s as y
                                                  yeval c b
 yeval m (Cons (Opaque _ f) y)               = f m y
@@ -30,7 +30,7 @@ yeval m (Cons x b@(Label _))                = do y <- yeval m b
 yeval m (Cons a y)                          = do x <- yeval m a
                                                  yeval m (Cons x y)
 yeval m (Label l)                           = maybe (err ["`", l, "' is not defined."])
-                                                    Right (Map.lookup l m)
+                                                    id (Map.lookup l m)
 yeval m (Action _)                          = err ["can't evaluate an impure action from pure code!"]
 yeval m x                                   = Right x
 
@@ -72,18 +72,14 @@ yrun ifc s fn si = either (return . Left) (yexec s) $ yread ifc fn si
 
 bindArgs :: Scope -> Scope -> [Argument] -> Elem -> Either String Scope
 
-bindArgs m s ad ai = do eai <- mev m ai
-                        bns <- fov (Map.empty) 0 ad eai
+bindArgs m s ad ai = do bns <- fov (Map.empty) 0 ad ai
                         return $ Map.union bns s
-  where mev s (Cons x ys) = do ex <- yeval s x
-                               either Left (Right . Cons ex) $ mev s ys
-        mev s x           = yeval s x
-        fov s _ ((Rest n):_) e =
-          yeval m e >>= \ e' -> Right $ Map.insert n e' s
+  where fov s _ ((Rest n):_) e =
+          Right $ Map.insert n (yeval m e) s
         fov s c (a:as) (Cons x ys) =
           case a of
-            Required n -> fov (Map.insert n x s) (c+1) as ys
-            Optional n -> fov (Map.insert n x s) (c+1) as ys
+            Required n -> fov (Map.insert n (yeval m x) s) (c+1) as ys
+            Optional n -> fov (Map.insert n (yeval m x) s) (c+1) as ys
         fov s c [] Nil =
           Right s
         fov _ c as Nil =

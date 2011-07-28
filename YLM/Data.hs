@@ -83,7 +83,7 @@ data Argument = Required String
               | Rest     String
               deriving (Show, Eq)
 
-type Scope = Map String Elem
+type Scope = Map String (Either String Elem)
 
 class TextInterface a where
   yread  :: a                    -- ^ Text interface to use

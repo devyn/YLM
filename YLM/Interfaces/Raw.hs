@@ -20,6 +20,7 @@ instance TextInterface Raw where
       Right ell -> Right ell
   ywrite Raw es = intercalate "\n" $ map putRaw es
 
+putRaw Nil                                          = "()"
 putRaw i@(Cons _ _)                                 = concat ["(", f i, ")"]
   where f (Cons a (Cons b c))                       = concat [putRaw a, " ", f (Cons b c)]
         f (Cons a Nil)                              = putRaw a
@@ -76,9 +77,10 @@ prettyRaw m o (Label s)
   where c = if (length s > 2 && head s == '!' && last s == '!')
                then "31"
                else case (Map.lookup s m) of
-                      Just (Opaque _ _) -> "36"
-                      Just _            -> "32"
-                      Nothing           -> "33"
+                      Just (Right (Opaque _ _)) -> "36"
+                      Just (Right _           ) -> "32"
+                      Just (Left  _           ) -> "31"
+                      Nothing                   -> "33"
 prettyRaw m o (NumInt n)              = concat ["\ESC[36m", show n, "\ESC[0m"]
 prettyRaw m o (NumFloat n)            = concat ["\ESC[36m", show n, "\ESC[0m"]
 prettyRaw m o (Lambda s as b)         = if length sf > 100
