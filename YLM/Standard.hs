@@ -3,14 +3,18 @@ module YLM.Standard (standard) where
 import YLM.Data
 import YLM.Data.Util
 import YLM.Runtime
+import YLM.Interfaces.Raw
 import Data.Map (Map)
 import qualified Data.Map as Map
 
--- TODO: read; write; set-scope; merge-window; concat;
---       load; explode; implode; map; left-fold; right-fold; empty; pp
+-- TODO: set-scope; merge-window; concat; read-file; write-file; append-file;
+--       load; explode; implode; map; left-fold; right-fold; empty; read-from-file
 
 standard =
-  Map.fromList [o "->"            oLambda
+  Map.fromList [o "read"          oRead
+               ,o "write"         oWrite
+               ,o "pretty-print"  oPrettyPrint
+               ,o "->"            oLambda
                ,o "form"          oForm
                ,o "self"          oSelf
                ,o "type-of"       oTypeOf
@@ -49,6 +53,20 @@ standard =
   where o n f = (n, Right $ Opaque n f)
         t n v = (n, Right $ v)
         e n x = (n, Left  $ x)
+
+oRead s (Cons a Nil) =
+  do a' <- yeval s a
+     case a' of
+       Label st -> yread Raw "" st >>= Right . lcons
+       _        -> tpe "label" a'
+
+oWrite s ws
+  | isPureList ws = Right $ Label $ ywrite Raw $ clist ws
+  | otherwise     = fallback "0+" ws
+
+oPrettyPrint s ws
+  | isPureList ws = Right $ Label $ ypp Raw s 0 $ clist ws
+  | otherwise     = fallback "0+" ws
 
 oLambda s (Cons as (Cons b Nil)) =
   do al <- argList as
