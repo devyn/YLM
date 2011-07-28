@@ -6,8 +6,8 @@ import YLM.Runtime
 import Data.Map (Map)
 import qualified Data.Map as Map
 
--- TODO: +; -; *; /; ^; read; write; bind; or; and; type-of; set-scope; merge-scope;
---       let; list; do; load; explode; implode; map; left-fold; right-fold; empty; xyzzy
+-- TODO: +; -; *; /; ^; read; write; bind; type-of; set-scope; concat;
+--       let; list; do; load; explode; map; left-fold; right-fold; empty; xyzzy
 
 standard =
   Map.fromList [o "->"            oLambda
@@ -23,6 +23,9 @@ standard =
                ,t "true"          tTrue
                ,t "false"         tFalse
                ,t "not"           tNot
+               ,t "and"           tAnd
+               ,t "or"            tOr
+               ,t "xor"           tXor
                ,o "="             oEq
                ,o "<"             oLessThan
                ,o ">"             oGreaterThan
@@ -92,7 +95,13 @@ tTrue = Lambda Map.empty [Required "a", Required "b"] (Label "a")
 
 tFalse = Lambda Map.empty [Required "a", Required "b"] (Label "b")
 
-tNot = Lambda Map.empty [Required "bool"] (Cons (Label "bool") (Cons tFalse (Cons tTrue Nil)))
+tNot = Lambda Map.empty [Required "bool"] $ lcons [Label "bool", tFalse, tTrue]
+
+tAnd = Lambda Map.empty [Required "a", Required "b"] $ lcons [Label "a", Label "b", tFalse]
+
+tOr = Lambda Map.empty [Required "a", Required "b"] $ lcons [Label "a", tTrue, Label "b"]
+
+tXor = Lambda Map.empty [Required "a", Required "b"] $ lcons [Label "a", lcons [Label "b", tFalse, tTrue], Label "b"]
 
 oEq s (Cons a (Cons b Nil)) = do
   a' <- yeval s a

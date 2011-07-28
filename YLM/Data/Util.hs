@@ -1,4 +1,4 @@
-module YLM.Data.Util (err, argList, arity, addArity, showArity, sizeCons, isPureList, fallback, tpe, tpem, isCons) where
+module YLM.Data.Util (err, argList, arity, addArity, showArity, sizeCons, isPureList, fallback, tpe, tpem, isCons, lcons) where
 
 import YLM.Data
 import Data.Map (Map)
@@ -72,3 +72,7 @@ isCons :: Elem -> Bool
 isCons Nil        = True
 isCons (Cons _ _) = True
 isCons _          = False
+
+lcons :: [Elem] -> Elem
+lcons (x:xs) = Cons x (lcons xs)
+lcons []     = Nil
