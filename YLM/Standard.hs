@@ -6,13 +6,14 @@ import YLM.Runtime
 import Data.Map (Map)
 import qualified Data.Map as Map
 
--- TODO: +; -; *; /; ^; read; write; bind; type-of; set-scope; concat;
---       let; list; do; load; explode; map; left-fold; right-fold; empty; xyzzy
+-- TODO: +; -; *; /; ^; read; write; bind; set-scope; concat; let; list;
+--       do; load; explode; map; left-fold; right-fold; empty; xyzzy
 
 standard =
   Map.fromList [o "->"            oLambda
                ,o "form"          oForm
                ,o "self"          oSelf
+               ,o "type-of"       oTypeOf
                ,o "def"           oDef
                ,o "undef"         oUndef
                ,o "list-defined"  oListDefined
@@ -52,6 +53,10 @@ oForm s _ =
 
 oSelf s Nil = Right $ Window s
 oSelf s x   = fallback "0" x
+
+oTypeOf s (Cons x Nil) = do x' <- yeval s x
+                            Right $ Label $ ytype x'
+oTypeof s x            = fallback "1" x
 
 oDef s (Cons name (Cons value Nil))
   | name == value = Left "I'm afraid I can't let you do that, for fear of the formation of a black hole."
