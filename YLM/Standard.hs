@@ -8,7 +8,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 
 -- TODO: set-scope; merge-window; concat; read-file; write-file; append-file;
---       load; explode; implode; map; left-fold; right-fold; empty; read-from-file
+--       load; map; left-fold; right-fold; empty; read-from-file
 
 standard =
   Map.fromList [o "read"          oRead
@@ -45,6 +45,8 @@ standard =
                ,o "head"          oHead
                ,o "tail"          oTail
                ,o "null?"         oNullQ
+               ,o "explode"       oExplode
+               ,o "implode"       oImplode
                ,o "do"            oDo
                ,o "bind"          oBind
                ,o "put-line"      oPutLine
@@ -248,6 +250,25 @@ oNullQ s (Cons l Nil) =
        Cons _ _ -> Right tFalse
        _        -> tpe "list" l'
 oNullQ s x = fallback "1" x
+
+oExplode s (Cons lb Nil) =
+  do lb' <- yeval s lb
+     case lb' of
+       Label l ->
+         Right $ lcons $ map (\ c -> Label [c]) l
+       _ -> tpe "label" lb'
+oExplode s x = fallback "1" x
+
+oImplode s (Cons ul Nil) =
+  do l <- yeval s ul
+     if isPureList l
+        then do m <- flip mapM (clist l) $
+                       \ x -> case x of
+                                Label lb -> Right lb
+                                _        -> tpe "label" x
+                Right $ Label $ concat m
+        else tpe "list" l
+oImplode s x = fallback "1" x
 
 oDo s x
   | isPureList x = Right $ Action $ \ m ->

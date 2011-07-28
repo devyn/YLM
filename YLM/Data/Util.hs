@@ -53,17 +53,17 @@ isPureList (Cons _ xs) = isPureList xs
 isPureList Nil         = True
 isPureList _           = False
 
-fallback :: String -> Elem -> Either String Elem
+fallback :: String -> Elem -> Either String a
 
 fallback n x
   | isPureList x = err ["wrong number of arguments (expected ", n, " argument(s), got ", show $ sizeCons x, ")."]
   | otherwise    = err ["can't cons that to this type of function!"]
 
-tpe :: String -> Elem -> Either String Elem
+tpe :: String -> Elem -> Either String a
 
 tpe ex g = err ["type error (expected ", ex, ", but got ", ytype g, ")."]
 
-tpem :: String -> [Elem] -> Either String Elem
+tpem :: String -> [Elem] -> Either String a
 
 tpem ex gs = err ["type error (expected ", ex, ", but got [", intercalate ", " (map ytype gs), "])."]
 
