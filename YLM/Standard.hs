@@ -241,12 +241,12 @@ oTail s (Cons l Nil) = do
     x          -> tpe "list" x
 oTail s x = fallback "1" x
 
-oNullQ s (Cons l Nil) = do
-    l' <- yeval s l
-    case l' of
-      Nil      -> Right tTrue
-      Cons _ _ -> Right tFalse
-      _        -> tpe "list" l'
+oNullQ s (Cons l Nil) =
+  do l' <- yeval s l
+     case l' of
+       Nil      -> Right tTrue
+       Cons _ _ -> Right tFalse
+       _        -> tpe "list" l'
 oNullQ s x = fallback "1" x
 
 oDo s x
