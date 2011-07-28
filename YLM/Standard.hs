@@ -185,14 +185,14 @@ oGreaterThan s x                     = fallback "2" x
 oAdd = hMath sum sum
 
 oSubtract = hMath subf subi
-  where subf = foldl (-) 0
-        subi = foldl (-) 0
+  where subf l = if null l then 0 else foldl (-) (head l) (tail l)
+        subi l = if null l then 0 else foldl (-) (head l) (tail l)
 
 oMultiply = hMath product product
 
 oDivide = hMath divf divi
-  where divf = foldl (/)    1
-        divi = foldl (quot) 1
+  where divf l = if null l then 1 else foldl (/)    (head l) (tail l)
+        divi l = if null l then 1 else foldl (quot) (head l) (tail l)
 
 oExponent = hMath expf expi
   where expf = foldr (**) 1
