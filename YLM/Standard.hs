@@ -6,8 +6,8 @@ import YLM.Runtime
 import Data.Map (Map)
 import qualified Data.Map as Map
 
--- TODO: +; -; *; /; ^; read; write; set-scope; merge-window; concat;
---       load; explode; implode; map; left-fold; right-fold; empty
+-- TODO: read; write; set-scope; merge-window; concat;
+--       load; explode; implode; map; left-fold; right-fold; empty; pp
 
 standard =
   Map.fromList [o "->"            oLambda
@@ -31,6 +31,11 @@ standard =
                ,o "="             oEq
                ,o "<"             oLessThan
                ,o ">"             oGreaterThan
+               ,o "+"             oAdd
+               ,o "-"             oSubtract
+               ,o "*"             oMultiply
+               ,o "/"             oDivide
+               ,o "^"             oExponent
                ,o "list"          oList
                ,o "cons"          oCons
                ,o "head"          oHead
@@ -156,6 +161,41 @@ oLessThan s x = fallback "2" x
 
 oGreaterThan s (Cons a (Cons b Nil)) = oLessThan s (Cons b (Cons a Nil))
 oGreaterThan s x                     = fallback "2" x
+
+oAdd = hMath sum sum
+
+oSubtract = hMath subf subi
+  where subf = foldl (-) 0
+        subi = foldl (-) 0
+
+oMultiply = hMath product product
+
+oDivide = hMath divf divi
+  where divf = foldl (/)    1
+        divi = foldl (quot) 1
+
+oExponent = hMath expf expi
+  where expf = foldr (**) 1
+        expi = foldr (^)  1
+
+hMath ff fi s nsu
+  | isPureList nsu =
+    do ns <- mapM (yeval s) (clist nsu)
+       if all (\ x -> case x of
+                        NumFloat _ -> True
+                        NumInt   _ -> True
+                        _          -> False) ns
+          then if any (\ x -> case x of
+                                NumFloat _ -> True
+                                _          -> False) ns
+                  then Right $ NumFloat $ ff $ flip map ns $
+                         \ x -> case x of
+                                  NumFloat n -> n
+                                  NumInt   n -> fromIntegral n
+                  else Right $ NumInt $ fi $ flip map ns $
+                         \ x -> case x of NumInt n -> n
+          else tpem "numbers" ns
+  | otherwise = fallback "0+" nsu
 
 oList s x
   | isPureList x = mapM (yeval s) (clist x) >>= return . lcons
