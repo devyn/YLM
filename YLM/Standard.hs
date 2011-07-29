@@ -7,8 +7,8 @@ import YLM.Interfaces.Raw
 import Data.Map (Map)
 import qualified Data.Map as Map
 
--- TODO: set-scope; merge-window; concat; read-file; write-file; append-file;
---       load; map; left-fold; right-fold; empty; read-from-file
+-- TODO: set-scope; merge-window; concat; delete-file; list-directory; stat-file;
+--       load; map; left-fold; right-fold; empty; read-from-file; exec-in
 
 standard =
   Map.fromList [o "read"          oRead
@@ -51,6 +51,9 @@ standard =
                ,o "bind"          oBind
                ,o "put-line"      oPutLine
                ,o "get-line"      oGetLine
+               ,o "read-file"     oReadFile
+               ,o "write-file"    oWriteFile
+               ,o "append-file"   oAppendFile
                ,t "xyzzy"         tXyzzy]
   where o n f = (n, Right $ Opaque n f)
         t n v = (n, Right $ v)
@@ -304,6 +307,39 @@ oGetLine s Nil = Right $ Action $ \ m -> do
   ln <- getLine
   return $ Right (m, Label ln)
 oGetLine s x = fallback "1" x
+
+oReadFile s (Cons fnm Nil) =
+  do fnm' <- yeval s fnm
+     case fnm' of
+       Label fname -> Right $ Action $ \ m ->
+         flip catch (return . Left . show) $
+           do c <- readFile fname
+              return $ Right (m, Label c)
+       _ -> tpe "label" fnm'
+oReadFile s x = fallback "1" x
+
+oWriteFile s (Cons fnm (Cons cts Nil)) =
+  do fnm' <- yeval s fnm
+     cts' <- yeval s cts
+     case (fnm', cts') of
+       (Label fname, Label contents) ->
+         Right $ Action $ \ m ->
+           flip catch (return . Left . show) $
+             do writeFile fname contents
+                return $ Right (m, lcons [Label "wrote"
+                                         ,NumInt $ fromIntegral (length contents), Label "bytes"])
+       _ -> tpem "labels" [fnm', cts']
+
+oAppendFile s (Cons fnm (Cons cts Nil)) =
+  do fnm' <- yeval s fnm
+     cts' <- yeval s cts
+     case (fnm', cts') of
+       (Label fname, Label contents) ->
+         Right $ Action $ \ m ->
+           flip catch (return . Left . show) $
+             do appendFile fname contents
+                return $ Right (m, lcons [Label "appended"
+                                         ,NumInt $ fromIntegral (length contents), Label "bytes"])
 
 tXyzzy = Action $ \ m -> do putStrLn "\ESC[34m ~ Nothing happens.\ESC[0m"
                             return $ Right (m, Nil)
