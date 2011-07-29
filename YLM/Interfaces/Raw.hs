@@ -138,7 +138,7 @@ quote = (\e -> Cons (Label "quote") (Cons e Nil)) <$> (char '\'' *> elem)
 
 list = char '(' *> optional whitespace *> (cons <|> return Nil) <* optional whitespace <* char ')'
 
-cons = Cons <$> (elem <* optional whitespace) <*> (try (char '.' *> optional whitespace *> elem) <|> cons <|> return Nil)
+cons = Cons <$> (elem <* optional whitespace) <*> (try cons <|> char '.' *> optional whitespace *> elem <|> return Nil)
 
 num = try float <|> int
 
@@ -153,8 +153,8 @@ float = (\ a b c d ->
 
 label = Label <$> f
   where f = try (char '"' *> many (noneOf "\"\\" <|> escapeCode) <* char '"')
+            <|> try (many2 (noneOf " \t\r\n()'\";"))
             <|> many1 (noneOf " \t\r\n()'\";.")
-            <|> many2 (noneOf " \t\r\n()'\";")
 
 escapeCode = (\ c -> maybe '\0' snd $ find ((== c).fst) (zip "\"\\rn0abftve" "\"\\\r\n\0\a\b\f\t\v\ESC")) <$> (char '\\' *> oneOf "\"\\rn0abftve")
 
