@@ -1,4 +1,5 @@
-module YLM.Data.Util (err, argList, arity, addArity, showArity, sizeCons, isPureList, fallback, tpe, tpem, isCons, lcons, clist) where
+module YLM.Data.Util (err, argList, arity, addArity, showArity, sizeCons, isPureList,
+                      fallback, tpe, tpem, isCons, lcons, clist) where
 
 import YLM.Data
 import Data.Map (Map)

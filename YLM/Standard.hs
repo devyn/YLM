@@ -6,14 +6,24 @@ import YLM.Runtime
 import YLM.Interfaces.Raw
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.Foldable (foldlM, foldrM)
+import Data.List
+import Control.Monad (filterM)
+import Control.Applicative
+import System.Plugins.Load
+import System.Directory
+import System.FilePath
+import System.Environment
+import System.IO
 
--- TODO: set-scope; merge-window; concat; delete-file; list-directory; stat-file;
---       load; map; left-fold; right-fold; empty; read-from-file; exec-in
+-- TODO: set-scope; merge-window; concat; delete-file; stat-file;
+--       load; empty; read-from-file; do-with; list-directory; apply
 
 standard =
   Map.fromList [o "read"          oRead
                ,o "write"         oWrite
                ,o "pretty-print"  oPrettyPrint
+               ,o "load"          oLoad
                ,o "->"            oLambda
                ,o "form"          oForm
                ,o "self"          oSelf
@@ -45,6 +55,10 @@ standard =
                ,o "head"          oHead
                ,o "tail"          oTail
                ,o "null?"         oNullQ
+               ,o "map"           oMap
+               ,o "filter"        oFilter
+               ,o "left-fold"     oLeftFold
+               ,o "right-fold"    oRightFold
                ,o "explode"       oExplode
                ,o "implode"       oImplode
                ,o "do"            oDo
@@ -73,7 +87,83 @@ oPrettyPrint s ws
   | isPureList ws = Right $ Label $ ypp Raw s 0 $ clist ws
   | otherwise     = fallback "0+" ws
 
-oLambda s (Cons as (Cons b Nil)) =
+oLoad s (Cons mn Nil) =
+  do mn' <- yeval s mn
+     case mn' of
+       Label mod -> Right $ Action $ \ m ->
+         do mfn <- hFindModule s mod
+            case mfn of
+              ModuleNotFound ->
+                return $ Left $ concat ["could not find any loadable files matching `", mod
+                                       ,"'. please ensure that it is on your load-path."]
+              InvalidLoadPath ->
+                return $ Left $ concat ["your load-path variable is set to something that (load)"
+                                        ," can not understand. it should be defined as a list of" 
+                                        ," directories for (load) to search."]
+              LoadPathNotDefined ->
+                return $ Left $ concat ["your load-path variable is not set. it should be defined"
+                                       ," as a list of directories for (load) to search."]
+              FindModuleError e ->
+                return $ Left e
+              YSTModuleFile path ->
+                flip catch (return . Left . show) $
+                  do f <- readFile path
+                     res <- yrun Raw standard path f
+                     either (return . Left) (return . Right . (\x->(m,x)) . Window . fst) res
+              CompiledModuleFile path ->
+                flip catch (return . Left . show) $
+                  do let loadPath = map (\ (Label x) -> x) $ clist $
+                                      maybe undefined
+                                            (either undefined id)
+                                            (Map.lookup "load-path" s)
+                     ylmLibPath <- getEnv "YLM_OBJECT_PATH"
+                     -- Warning: Loading Haskell modules is potentially unsafe at the moment.
+                     -- If ystModule is something other than IO Scope, some seriously weird
+                     -- corruption and/or crashes are likely to occur.
+                     ms <- load path (ylmLibPath : loadPath) [] "ystModule"
+                     case ms of
+                       LoadSuccess _ ios -> do
+                         scope <- ios
+                         return $ Right $ (m, Window scope)
+                       LoadFailure errors ->
+                         return $ Left $ intercalate "\n " errors
+       _ -> tpe "label" mn'
+oLoad s x = fallback "1" x
+
+data FindModuleResult = ModuleNotFound
+                      | InvalidLoadPath
+                      | LoadPathNotDefined
+                      | FindModuleError String
+                      | YSTModuleFile String
+                      | CompiledModuleFile String
+
+hFindModule s modname
+  | isAbsolute modname =
+    do isE <- doesFileExist modname
+       return $ if isE
+                   then case takeExtension modname of
+                          ".o"   -> CompiledModuleFile modname
+                          _      -> YSTModuleFile      modname
+                   else ModuleNotFound
+  | otherwise = flip catch (return . FindModuleError . show) $ do
+    case Map.lookup "load-path" s of
+      Just (Right lpv)
+        | isPureList lpv && all ((== "label") . ytype) (clist lpv) ->
+          do let loadPath = map (\ (Label x) -> x) $ clist lpv
+             let tryMatch baseName = mapM (doesFileExist . (</> baseName)) loadPath
+                                     >>= return . fmap ((</> baseName) . fst) . find snd . zip loadPath
+             cm <- tryMatch (modname <.> ".o")
+             ym <- tryMatch (modname <.> ".yst")
+             om <- tryMatch modname
+             return $ maybe ModuleNotFound id (CompiledModuleFile <$> cm <|>
+                                               YSTModuleFile      <$> ym <|>
+                                               YSTModuleFile      <$> om)
+        | otherwise ->
+            return InvalidLoadPath
+      _ ->
+        return LoadPathNotDefined
+
+oLambda s (Cons as (Cons b Nil)) = 
   do al <- argList as
      return $ Lambda s al b
 oLambda s _ =
@@ -253,6 +343,51 @@ oNullQ s (Cons l Nil) =
        Cons _ _ -> Right tFalse
        _        -> tpe "list" l'
 oNullQ s x = fallback "1" x
+
+oMap s (Cons fun (Cons l Nil)) =
+  do fun' <- yeval s fun
+     l'   <- yeval s l
+     if isPureList l'
+        then do t <- flip mapM (clist l') $ \ x ->
+                       yeval s $ lcons [fun, lcons [Label "quote", x]]
+                Right $ lcons t
+        else err ["can't map over a dirty (assoc) list."]
+oMap s x = fallback "2" x
+
+oFilter s (Cons fun (Cons l Nil)) =
+  do fun' <- yeval s fun
+     l'   <- yeval s l
+     if isPureList l'
+        then do t <- flip filterM (clist l') $ \ x ->
+                       do fr <- yeval s $ lcons [fun, q x]
+                          tr <- yeval s $ lcons [fr,  q (Label "yes"),
+                                                      q (Label "no")]
+                          case tr of
+                            Label "yes" -> Right True
+                            Label "no"  -> Right False
+                            _           -> err ["the filtering function did not return a boolean function."]
+                Right $ lcons t
+        else err ["can't filter a dirty (assoc) list."]
+  where q v = lcons [Label "quote", v]
+oFilter s x = fallback "2" x
+
+oLeftFold = hFold foldlM
+
+oRightFold = hFold foldrM
+
+hFold :: ((Elem -> Elem -> Either String Elem) -> Elem -> [Elem] -> Either String Elem) -> Scope -> Elem -> Either String Elem
+
+hFold ff s (Cons fun (Cons inv (Cons l Nil))) =
+  do fun' <- yeval s fun
+     inv' <- yeval s inv
+     l'   <- yeval s l
+     if isPureList l'
+        then fl inv' (clist l') $ \ y x ->
+               yeval s $ lcons [fun, q y, q x]
+        else err ["can't fold over a dirty (assoc) list."]
+  where fl b c a = ff a b c
+        q v      = lcons [Label "quote", v]
+hFold ff s x = fallback "3" x
 
 oExplode s (Cons lb Nil) =
   do lb' <- yeval s lb
