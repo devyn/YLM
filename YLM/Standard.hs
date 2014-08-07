@@ -4,6 +4,7 @@ import YLM.Data
 import YLM.Data.Util
 import YLM.Runtime
 import YLM.Interfaces.Raw
+import Control.Exception (SomeException, catch)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Foldable (foldlM, foldrM)
@@ -106,12 +107,12 @@ oLoad s (Cons mn Nil) =
               FindModuleError e ->
                 return $ Left e
               YSTModuleFile path ->
-                flip catch (return . Left . show) $
+                flip catchSome (return . Left . show) $
                   do f <- readFile path
                      res <- yrun Raw standard path f
                      either (return . Left) (return . Right . (\x->(m,x)) . Window . fst) res
               CompiledModuleFile path ->
-                flip catch (return . Left . show) $
+                flip catchSome (return . Left . show) $
                   do let loadPath = map (\ (Label x) -> x) $ clist $
                                       maybe undefined
                                             (either undefined id)
@@ -145,7 +146,7 @@ hFindModule s modname
                           ".o"   -> CompiledModuleFile modname
                           _      -> YSTModuleFile      modname
                    else ModuleNotFound
-  | otherwise = flip catch (return . FindModuleError . show) $ do
+  | otherwise = flip catchSome (return . FindModuleError . show) $ do
     case Map.lookup "load-path" s of
       Just (Right lpv)
         | isPureList lpv && all ((== "label") . ytype) (clist lpv) ->
@@ -447,7 +448,7 @@ oReadFile s (Cons fnm Nil) =
   do fnm' <- yeval s fnm
      case fnm' of
        Label fname -> Right $ Action $ \ m ->
-         flip catch (return . Left . show) $
+         flip catchSome (return . Left . show) $
            do c <- readFile fname
               return $ Right (m, Label c)
        _ -> tpe "label" fnm'
@@ -459,7 +460,7 @@ oWriteFile s (Cons fnm (Cons cts Nil)) =
      case (fnm', cts') of
        (Label fname, Label contents) ->
          Right $ Action $ \ m ->
-           flip catch (return . Left . show) $
+           flip catchSome (return . Left . show) $
              do writeFile fname contents
                 return $ Right (m, lcons [Label "wrote"
                                          ,NumInt $ fromIntegral (length contents), Label "bytes"])
@@ -471,7 +472,7 @@ oAppendFile s (Cons fnm (Cons cts Nil)) =
      case (fnm', cts') of
        (Label fname, Label contents) ->
          Right $ Action $ \ m ->
-           flip catch (return . Left . show) $
+           flip catchSome (return . Left . show) $
              do appendFile fname contents
                 return $ Right (m, lcons [Label "appended"
                                          ,NumInt $ fromIntegral (length contents), Label "bytes"])
@@ -481,3 +482,6 @@ tXyzzy = Action $ \ m -> do putStrLn "\ESC[34m ~ Nothing happens.\ESC[0m"
 
 
 wcle = Left "I'm afraid I can't let you do that, for fear of the formation of a black hole."
+
+catchSome :: IO a -> (SomeException -> IO a) -> IO a
+catchSome = catch
